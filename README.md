@@ -130,6 +130,10 @@ features. You can distill DINO features instead by adding `--pipeline.datamanage
 ns-train f3rm --data <data_folder>
 ```
 
+```bash
+ns-train f3rm --data datasets/panda/scene_001 --max-num-iterations 5000 --output-dir f3rm_outputs --timestamp '' --pipeline.model.eval-num-rays-per-chunk 8192
+```
+
 You can try F3RM with the example datasets which you can download following the
 [instructions here](#downloading-example-datasets) (try out `f3rm/panda/scene_001`). Alternatively, you can prepare your
 own datasets following the instructions in the
@@ -162,7 +166,15 @@ Our custom web viewer is coming soon! Keep an eye on out for updates.
 Once you have started training the feature field with `ns-train`, Nerfstudio will print a URL to the viewer in the
 terminal (the URL will start with https://viewer.nerf.studio). You can open this URL to open the Nerfstudio viewer in
 your browser to visualize training progress and the feature field. Alternatively, to visualize a trained model you can
-run `ns-viewer --load-config {outputs/.../config.yml}`.
+run:
+
+```bash
+ns-viewer --load-config {outputs/.../config.yml}
+```
+```bash
+ns-viewer --load-config f3rm_outputs/scene_001/f3rm/config.yml
+```
+
 
 Note that if you are using a remote server, you will need to forward the port to your local machine
 ([instructions](https://docs.nerf.studio/quickstart/viewer_quickstart.html#training-on-a-remote-machine)).

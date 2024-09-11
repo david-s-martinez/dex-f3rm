@@ -19,10 +19,10 @@ dependencies = [
     "einops",
     "ftfy",
     "gdown",
-    "matplotlib",
+    # "matplotlib",
     # Last release before v1.0.0 which breaks things
-    "nerfstudio==0.3.4",
-    "numpy",
+    # "nerfstudio==0.3.4",
+    # "numpy",
     "pillow",
     "regex",
     "torchtyping",
