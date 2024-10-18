@@ -46,7 +46,22 @@ of the codebase structure, see [assets/code_structure.md](assets/code_structure.
 ### Installation
 
 **Note:** this repo requires an NVIDIA GPU with CUDA 11.7+ for NeRF and feature field distillation.
+#### 0. Building and Running the Docker Container with Visual Studio Code and Dev Containers (Recommended):
+Below is the recommended approach for running the pipeline using Visual Studio Code with the Dev Containers extension. This approach utilizes the `.devcontainer` directory containing the `devcontainer.json` file and Dockerfile for containerization. Users will build and run the container directly from within VS Code. You will need:
+- Docker installed on your system
+- [Nvidia container toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) installed on your system
 
+Open Visual Studio Code and install the "Remote - Containers" extension by Microsoft. You can install it from the Extensions view (Ctrl+Shift+X) by searching for "Remote - Containers" and clicking "Install".
+
+- Once the repository is open in VS Code, the Dev Containers extension will detect the presence of the `.devcontainer` directory containing the `devcontainer.json` file and Dockerfile. It will suggest building and opening the project in a container.
+
+- If the suggestion prompt appears:
+  - Click "Reopen in Container" to build and open the project in a container.
+- If the suggestion prompt does not appear:
+  - Ensure that the Dev Containers extension is properly installed and activated.
+  - Manually build and open the container using the VS Code command palette (Ctrl+Shift+P):
+    - Search for and select "Remote-Containers: Reopen in Container".
+- If this step works you can skip steps 1 and 2. Run the rest of commands inside the container.
 #### 1. Setup conda environment
 
 ```bash
@@ -77,7 +92,7 @@ pip install ninja git+https://github.com/NVlabs/tiny-cuda-nn/#subdirectory=bindi
 git clone https://github.com/f3rm/f3rm.git
 cd f3rm
 
-# Install F3RM and its dependencies
+# Install F3RM and its dependencies if it fails try sudo chmod -R 777 ./
 pip install -e .
 
 # Install command-line completions for nerfstudio
@@ -104,6 +119,7 @@ pip install -e ".[robot]"
 
 # Install PyTorch3D, we recommend you build from source which may take a few minutes
 # Alternatively, check: https://github.com/facebookresearch/pytorch3d/blob/main/INSTALL.md
+# If it freezes during install try: export MAX_JOBS=4 && pip install --no-cache-dir "git+https://github.com/facebookresearch/pytorch3d.git@stable" --user
 pip install "git+https://github.com/facebookresearch/pytorch3d.git@stable"
 
 # Test your installation. If you see a help message, everything should be working
