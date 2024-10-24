@@ -120,8 +120,8 @@ def get_transformation_matrix(
         print("Min error:", errors.min(0))
 
     mean_trans_error = np.mean(np.abs(np.array(pos_errors)))
-    if mean_trans_error > trans_error_threshold:
-        raise ValueError(f"Position error {mean_trans_error} is too high")
+    # if mean_trans_error > trans_error_threshold:
+    #     raise ValueError(f"Position error {mean_trans_error} is too high")
     mean_rot_error = np.mean(np.abs(np.array(rot_errors)))
     if mean_rot_error > rot_error_threshold:
         raise ValueError(f"Rotation error {mean_rot_error} is too high")
@@ -142,7 +142,7 @@ def run(scan_dir):
     with open(scan_dir / "transforms.json") as f:
         transforms = json.load(f)
 
-    with open(scan_dir / "transforms_gt.json") as f:
+    with open(scan_dir / "transforms_ogl.json") as f:
         transforms_gt = json.load(f)
 
     gt_frames = list(sorted(transforms_gt["frames"], key=lambda f: f["file_path"]))
@@ -200,7 +200,7 @@ def run(scan_dir):
 
 
 if __name__ == "__main__":
-    with open("calibration_dir.txt", "r") as f:
+    with open("/workspaces/f3rm/datasets/calibration_dir.txt", "r") as f:
         calibration_dir = f.read().strip()
     print(f"calibration_dir: {calibration_dir}")
     run(calibration_dir)

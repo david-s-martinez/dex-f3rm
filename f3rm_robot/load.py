@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import torch
+import numpy as np
 from nerfstudio.cameras.camera_optimizers import CameraOptimizer
 from nerfstudio.pipelines.base_pipeline import Pipeline
 from pytorch3d.transforms import Transform3d, matrix_to_quaternion, quaternion_to_matrix
@@ -94,15 +95,51 @@ class LoadState:
         return FeatureFieldAdapter(model=self.pipeline.model, world_to_nerf=self.nerf_to_world.inverse())
 
 
-def load_nerfstudio_outputs(exp_config_path: str) -> LoadState:
+def load_nerfstudio_outputs(exp_config_path: str, is_use_colmap2world: bool) -> LoadState:
     """Load a Nerfstudio output for pose optimization."""
     from nerfstudio.utils.eval_utils import eval_setup
 
     config, pipeline, checkpoint_path, step = eval_setup(Path(exp_config_path))
+    if not is_use_colmap2world:
+        # Load nerf to world transformation
+        nerf_to_world = load_nerf_to_world(dataset=config.data)
+        nerf_to_world = nerf_to_world.to(pipeline.device)
+    else:
+        # Load colmap_to_world
+        colmap_to_world = load_colmap_to_world(dataset=config.data or config.pipeline.datamanager.dataparser.data)
 
-    # Load nerf to world transformation
-    nerf_to_world = load_nerf_to_world(dataset=config.data)
-    nerf_to_world = nerf_to_world.to(pipeline.device)
+        # Load dataparser_transforms
+        dataparser_transforms = Path(exp_config_path).parent / "dataparser_transforms.json"
+        if not dataparser_transforms.exists():
+            raise FileNotFoundError
+
+        with dataparser_transforms.open("r") as f:
+            dataparser_transforms = json.load(f)
+
+        scale = dataparser_transforms["scale"]
+        transform = np.array(dataparser_transforms["transform"])
+        transform = np.vstack([transform, [0, 0, 0, 1]])
+        inverse_scale = 1 / scale
+
+        scale_matrix = np.eye(4)
+        scale_matrix[0, 0] = inverse_scale
+        scale_matrix[1, 1] = inverse_scale
+        scale_matrix[2, 2] = inverse_scale
+        print(inverse_scale)
+        # Assumes poses are scaled only
+        # Not implemented: rotation and translation
+        print(transform)
+        inverse_transform = np.linalg.inv(transform)
+        # nerf_to_colmap = scale_matrix @ inverse_transform
+        nerf_to_colmap = scale_matrix 
+
+        nerf_to_colmap = torch.tensor(nerf_to_colmap).float()
+        print("nerf_to_colmap =", nerf_to_colmap)
+
+        # Need to take transpose as Transform3d uses row vector convention rather than column
+        nerf_to_colmap = Transform3d(matrix=nerf_to_colmap.T)
+        nerf_to_world = nerf_to_colmap.compose(colmap_to_world)
+        nerf_to_world = nerf_to_world.to(pipeline.device)
 
     # Load and apply the camera optimizer offset. It's slightly confusing, as the final Nerfstudio model actually
     # lives in the 'offset' coordinate system, but we will call it nerf_to_world for simplicity.
@@ -115,3 +152,18 @@ def load_nerfstudio_outputs(exp_config_path: str) -> LoadState:
     offset_to_world = offset_to_nerf.compose(nerf_to_world)
     nerf_to_world = offset_to_world
     return LoadState(pipeline, nerf_to_world)
+
+def load_colmap_to_world(dataset: Path) -> Transform3d:
+    col2w_path = dataset / "colmap_to_world.json"
+    if not col2w_path.exists():
+        raise ValueError(f"Could not find colmap_to_world.json in {dataset}")
+
+    with col2w_path.open("r") as f:
+        colmap_to_world_dict = json.load(f)
+
+    colmap_to_world = colmap_to_world_dict["transformation_matrix"]
+    colmap_to_world = torch.tensor(colmap_to_world).float()
+    assert colmap_to_world.shape == (4, 4), f"Expected colmap_to_world to be 4x4, but got {colmap_to_world.shape}"
+
+    colmap_to_world = Transform3d(matrix=colmap_to_world.T)
+    return colmap_to_world

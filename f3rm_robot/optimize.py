@@ -357,11 +357,12 @@ def language_pose_optimization(
 
 def entrypoint():
     ARGS.parse_args()
+    print(ARGS.groups.keys())
     validate_args()
 
     # Load feature field
     print(f"Loading feature field from {args.scene}...")
-    load_state = load_nerfstudio_outputs(args.scene)
+    load_state = load_nerfstudio_outputs(args.scene, args.is_use_colmap2world)
     device = load_state.pipeline.device
     feature_field = load_state.feature_field_adapter()
 

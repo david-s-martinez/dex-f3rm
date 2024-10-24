@@ -9,6 +9,7 @@ class OptimizationArgs(ParamsProto, cli_parse=False):
     Language-Guided 6-DOF Pose Optimization for a given scene.
     """
 
+    is_use_colmap2world: bool = Proto(True, help=" Use colmap2world during loading")
     scene: str = Proto(help="Path to Nerfstudio scene config.yml file for the f3rm training run.")
 
     # Initial proposals
