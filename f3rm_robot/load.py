@@ -116,29 +116,34 @@ def load_nerfstudio_outputs(exp_config_path: str, is_use_colmap2world: bool) -> 
         with dataparser_transforms.open("r") as f:
             dataparser_transforms = json.load(f)
 
+        # The transformation only applies translation, make sure to use the --orientation-method flag with ns-train f3rm
+        transform = np.eye(4)
+        transform[0,3] = dataparser_transforms["transform"][0][3]
+        transform[1,3] = dataparser_transforms["transform"][1][3]
+        transform[2,3] = dataparser_transforms["transform"][2][3]
+        nerf_to_colmap = np.linalg.inv(transform)
+        print("nerf_to_colmap =\n", nerf_to_colmap)
+        
+        # Compute scale matrix
         scale = dataparser_transforms["scale"]
-        transform = np.array(dataparser_transforms["transform"])
-        transform = np.vstack([transform, [0, 0, 0, 1]])
-        inverse_scale = 1 / scale
-
         scale_matrix = np.eye(4)
+        inverse_scale = 1 / scale
         scale_matrix[0, 0] = inverse_scale
         scale_matrix[1, 1] = inverse_scale
         scale_matrix[2, 2] = inverse_scale
-        print(inverse_scale)
-        # Assumes poses are scaled only
-        # Not implemented: rotation and translation
-        print(transform)
-        inverse_transform = np.linalg.inv(transform)
-        # nerf_to_colmap = scale_matrix @ inverse_transform
-        nerf_to_colmap = scale_matrix 
+        print("scale_matrix =\n", scale_matrix)
 
+        # Convert to torch tensor
         nerf_to_colmap = torch.tensor(nerf_to_colmap).float()
-        print("nerf_to_colmap =", nerf_to_colmap)
+        scale_matrix = torch.tensor(scale_matrix).float()
 
         # Need to take transpose as Transform3d uses row vector convention rather than column
         nerf_to_colmap = Transform3d(matrix=nerf_to_colmap.T)
-        nerf_to_world = nerf_to_colmap.compose(colmap_to_world)
+        scale_matrix = Transform3d(matrix=scale_matrix.T)
+
+        # Apply transformations
+        nerf_to_colmap_scaled = scale_matrix.compose(nerf_to_colmap)
+        nerf_to_world = nerf_to_colmap_scaled.compose(colmap_to_world)
         nerf_to_world = nerf_to_world.to(pipeline.device)
 
     # Load and apply the camera optimizer offset. It's slightly confusing, as the final Nerfstudio model actually
