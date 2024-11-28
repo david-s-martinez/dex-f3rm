@@ -49,6 +49,14 @@ We provide a tutorial on how to use language-guided pose optimization using the 
 them using `f3rm-download-data panda`. We added the calibration between the NeRF and world coordinate frames in the
 `nerf_to_world.json` file.
 
+#### 0. Run Colmap
+```
+ns-process-data images --data datasets/eyeinhand_nerf1/img_folder/images --output-dir datasets/eyeinhand_nerf1/img_folder
+```
+
+```
+python3 f3rm/scripts/colmap_to_world.py
+```
 #### 1. Train a Feature Field
 
 We will use `f3rm/panda/scene_001` for this tutorial. See a description of each dataset
@@ -57,6 +65,10 @@ provided [here](../assets/datasets.md). Make sure you're in the base directory o
 ```
 ns-train f3rm --data datasets/f3rm/panda/scene_001 --max-num-iterations 5000 \
   --output-dir f3rm_outputs --timestamp ''
+```
+For colmap method:
+```
+ns-train f3rm --max-num-iterations 5000 --output_dir f3rm_outputs --timestamp '' nerfstudio-data --data datasets/eyeinhand_nerf1/img_folder --orientation-method none --auto-scale-poses True
 ```
 
 We set `--output-dir` to a separate output directory to Nerfstudio and `--timestamp` to empty string, so that the

@@ -95,16 +95,18 @@ class LoadState:
         return FeatureFieldAdapter(model=self.pipeline.model, world_to_nerf=self.nerf_to_world.inverse())
 
 
-def load_nerfstudio_outputs(exp_config_path: str, is_use_colmap2world: bool) -> LoadState:
+def load_nerfstudio_outputs(exp_config_path: str) -> LoadState:
     """Load a Nerfstudio output for pose optimization."""
     from nerfstudio.utils.eval_utils import eval_setup
 
     config, pipeline, checkpoint_path, step = eval_setup(Path(exp_config_path))
-    if not is_use_colmap2world:
+    try:
+        print("Trying to load nerf_to_world")
         # Load nerf to world transformation
         nerf_to_world = load_nerf_to_world(dataset=config.data)
         nerf_to_world = nerf_to_world.to(pipeline.device)
-    else:
+    except:
+        print("Loading nerf_to_world failed, trying to load colmap_to_world")
         # Load colmap_to_world
         colmap_to_world = load_colmap_to_world(dataset=config.data or config.pipeline.datamanager.dataparser.data)
 

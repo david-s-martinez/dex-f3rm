@@ -37,7 +37,7 @@ visualizer: Optional[BaseVisualizer] = None
 
 def get_scene_pcd(load_state: LoadState, num_points: int, voxel_size: float) -> o3d.geometry.PointCloud:
     # Set z to -0.01, so we can show the table as well in the point cloud
-    scene_min_bounds = (args.min_bounds[0], args.min_bounds[1], -0.01)
+    scene_min_bounds = (args.min_bounds[0], args.min_bounds[1], args.min_bounds[2])
     pcd = sample_point_cloud(load_state, num_points, scene_min_bounds, args.max_bounds)
 
     # Downsample and remove outliers (floaters)
@@ -362,7 +362,7 @@ def entrypoint():
 
     # Load feature field
     print(f"Loading feature field from {args.scene}...")
-    load_state = load_nerfstudio_outputs(args.scene, args.is_use_colmap2world)
+    load_state = load_nerfstudio_outputs(args.scene)
     device = load_state.pipeline.device
     feature_field = load_state.feature_field_adapter()
 

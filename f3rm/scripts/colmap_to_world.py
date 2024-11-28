@@ -142,7 +142,7 @@ def run(scan_dir):
     with open(scan_dir / "transforms.json") as f:
         transforms = json.load(f)
 
-    with open(scan_dir / "transforms_ogl.json") as f:
+    with open(scan_dir / "transforms_gt_ogl.json") as f:
         transforms_gt = json.load(f)
 
     gt_frames = list(sorted(transforms_gt["frames"], key=lambda f: f["file_path"]))
