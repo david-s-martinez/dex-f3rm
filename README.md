@@ -95,6 +95,9 @@ cd f3rm
 # Install F3RM and its dependencies if it fails try sudo chmod -R 777 ./
 pip install -e .
 
+# For the correct Viser version
+pip install viser==0.1.34
+
 # Install command-line completions for nerfstudio
 ns-install-cli
 

@@ -23,7 +23,7 @@ from jaxtyping import Float
 from pytorch3d.transforms import Transform3d
 from scipy.spatial.transform import Rotation
 
-from f3rm_robot.assets import get_panda_gripper_mesh
+from f3rm_robot.assets import get_panda_gripper_mesh, get_hithand_gripper_mesh
 from f3rm_robot.load import LoadState, load_nerfstudio_outputs
 from f3rm_robot.task import Task, sample_query_points
 from f3rm_robot.visualizer import BaseVisualizer, ViserVisualizer
@@ -71,6 +71,8 @@ def visualize_demos(
 
     # Show query points, coordinate frame, and gripper mesh for each demo
     base_gripper_mesh = get_panda_gripper_mesh()
+    # TODO: replace hand.
+    # base_gripper_mesh = get_hithand_gripper_mesh()
     base_gripper_mesh.compute_vertex_normals()
 
     for label, qps, pose in zip(demo_labels, demo_qps, demo_poses):
