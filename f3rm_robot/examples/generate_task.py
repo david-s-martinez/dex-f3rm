@@ -61,6 +61,7 @@ def visualize_demos(
     demo_labels: List[str],
     demo_poses: Transform3d,
     demo_qps: Float[torch.Tensor, "d n 3"],
+    demo_joints: Dict
 ):
     # We use helpers from the main optimization scripts for visualization
     from f3rm_robot.optimize import get_scene_pcd
@@ -70,12 +71,16 @@ def visualize_demos(
     visualizer.add_o3d_point_cloud("scene_pcd", scene_pcd, point_size=0.005 + 0.001)
 
     # Show query points, coordinate frame, and gripper mesh for each demo
-    base_gripper_mesh = get_panda_gripper_mesh()
-    # TODO: replace hand.
-    # base_gripper_mesh = get_hithand_gripper_mesh()
-    base_gripper_mesh.compute_vertex_normals()
+    # base_gripper_mesh = get_panda_gripper_mesh()
+    try:
+        joints = [np.array(demo["joint_state"]).flatten() for demo in demo_joints]
+    except:
+        print("Joints not provided.")
+        joints = [np.zeros(15) for demo in demo_joints]
 
-    for label, qps, pose in zip(demo_labels, demo_qps, demo_poses):
+    for label, qps, pose, joint in zip(demo_labels, demo_qps, demo_poses, joints):
+        base_gripper_mesh = get_hithand_gripper_mesh(joint)
+        base_gripper_mesh.compute_vertex_normals()
         # Transformation matrix, need to transpose Transform3d matrix as it uses row vectors
         transform = pose.get_matrix()[0].T
 
@@ -143,7 +148,7 @@ def generate_task(
     if not disable_visualize:
         visualizer = ViserVisualizer(host=viser_host, port=viser_port)
         visualize_demos(
-            visualizer, load_state, demo_labels=demo_dict["demo_labels"], demo_poses=demo_poses, demo_qps=qp_transformed
+            visualizer, load_state, demo_labels=demo_dict["demo_labels"], demo_poses=demo_poses, demo_qps=qp_transformed, demo_joints= demo_dict["demo_poses"]
         )
         try:
             input("Press Enter or Ctrl+C to exit.")

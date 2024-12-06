@@ -87,10 +87,10 @@ wrist2grasp = np.array([
     [0.000,  0.000,  0.000,  1.000],
 ]) # computed using ros2 run tf2_ros tf2_echo base_link_hithand f3rm_link
 
-def get_hithand_gripper_mesh() -> o3d.geometry.TriangleMesh:
+def get_hithand_gripper_mesh(joint) -> o3d.geometry.TriangleMesh:
     asset_path = get_asset_path("hithand_palm/hithand.urdf")
     robot = urdfpy.URDF.load(asset_path)
-    fk = get_robot_fk(robot, np.zeros(20))
+    fk = get_robot_fk(robot, joint)
     mesh_robot_total = o3d.geometry.TriangleMesh()
     for tm in fk:
         pose = fk[tm]
