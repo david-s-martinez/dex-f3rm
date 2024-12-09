@@ -29,9 +29,9 @@
 		}
 	},
 	"runArgs": [
-		"--runtime=nvidia",
+		// "--runtime=nvidia", //for  jetson/ARM SBSA systems https://forums.developer.nvidia.com/t/whats-difference-between-gpus-and-runtime-nvidia-for-the-docker-container/283468/4
 		"--privileged",
-		"--gpus=all",
+		"--gpus=all", //for x86
 		"--network=host"
 	],
 	"mounts": [
