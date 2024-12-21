@@ -400,6 +400,48 @@
     <origin rpy="-0.15 -1.3 0" xyz="0.02 0 0.06"/>
   </joint>
   <link name="palm_link_hithand"/>
+  <!-- F3RM Query point joints-->
+  <joint name="hithand_f3rm_grasp" type="fixed">
+    <parent link="base_link_hithand" />
+    <child link="f3rm_grasp" />
+    <origin rpy="3.1416 0 1.5708" xyz="0.045 0 0.15" />
+  </joint>
+  <link name="f3rm_grasp" />
+
+  <joint name="hithand_f3rm_thumb" type="fixed">
+    <parent link="Right_Thumb_Phamed" />
+    <child link="f3rm_thumb" />
+    <origin rpy="0 0 0" xyz="0 0.02 0" />
+  </joint>
+  <link name="f3rm_thumb" />
+
+  <joint name="hithand_f3rm_index" type="fixed">
+    <parent link="Right_Index_Phamed" />
+    <child link="f3rm_index" />
+    <origin rpy="0 0 0" xyz="0 0.02 0" />
+  </joint>
+  <link name="f3rm_index" />
+
+  <joint name="hithand_f3rm_middle" type="fixed">
+    <parent link="Right_Middle_Phamed" />
+    <child link="f3rm_middle" />
+    <origin rpy="0 0 0" xyz="0 0.02 0" />
+  </joint>
+  <link name="f3rm_middle" />
+  
+  <joint name="hithand_f3rm_ring" type="fixed">
+    <parent link="Right_Ring_Phamed" />
+    <child link="f3rm_ring" />
+    <origin rpy="0 0 0" xyz="0 0.02 0" />
+  </joint>
+  <link name="f3rm_ring" />
+  
+  <joint name="hithand_f3rm_little" type="fixed">
+    <parent link="Right_Little_Phamed" />
+    <child link="f3rm_little" />
+    <origin rpy="0 0 0" xyz="0 0.02 0" />
+  </joint>
+  <link name="f3rm_little" />
   <!-- #########################FINGER######################## -->
   <!-- END of finger macro -->
   <!-- +++++ Finger base joint 0 ++++++ -->

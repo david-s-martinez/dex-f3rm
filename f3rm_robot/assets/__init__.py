@@ -73,7 +73,8 @@ def get_robot_fk(robot, joint_conf):
                         joint_conf.shape[0])
     cfg_map = get_hand_cfg_map(joint_conf_full)
     fk = robot.visual_trimesh_fk(cfg=cfg_map)
-    return fk
+
+    return fk, robot.link_fk(cfg=cfg_map)
 
 def get_panda_gripper_mesh() -> o3d.geometry.TriangleMesh:
     asset_path = get_asset_path("panda_gripper_visual.obj")
@@ -90,7 +91,14 @@ wrist2grasp = np.array([
 def get_hithand_gripper_mesh(joint) -> o3d.geometry.TriangleMesh:
     asset_path = get_asset_path("hithand_palm/hithand.urdf")
     robot = urdfpy.URDF.load(asset_path)
-    fk = get_robot_fk(robot, joint)
+
+    f3rm_names = {link.name:i for i, link in enumerate(robot.links) if "f3rm" in link.name}
+    print(f"names: {f3rm_names}")
+
+    fk, fk_link = get_robot_fk(robot, joint)
+
+    f3rm_frames = {f"wrist_2_{name}": np.linalg.inv(wrist2grasp) @ fk_link[robot.links[idx]] for name, idx in f3rm_names.items()}
+
     mesh_robot_total = o3d.geometry.TriangleMesh()
     for tm in fk:
         pose = fk[tm]
@@ -100,4 +108,4 @@ def get_hithand_gripper_mesh(joint) -> o3d.geometry.TriangleMesh:
         mesh_robot.triangles = o3d.pybind.utility.Vector3iVector(np.asarray(tm.faces.copy()))
         mesh_robot.transform(pose)
         mesh_robot_total += mesh_robot
-    return mesh_robot_total
+    return mesh_robot_total, f3rm_frames

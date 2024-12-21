@@ -91,7 +91,7 @@ def visualize_demos(
         joints = [np.zeros(20) for demo in demo_joints]
 
     for label, qps, pose, joint in zip(demo_labels, demo_qps, demo_poses, joints):
-        base_gripper_mesh = get_hithand_gripper_mesh(joint)
+        base_gripper_mesh, f3rm_tfs = get_hithand_gripper_mesh(joint)
         base_gripper_mesh.compute_vertex_normals()
         # Transformation matrix, need to transpose Transform3d matrix as it uses row vectors
         transform = pose.get_matrix()[0].T
@@ -106,6 +106,12 @@ def visualize_demos(
         pose_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.03)
         pose_frame.transform(transform)
         visualizer.add_o3d_mesh(f"{label}/pose_frame", pose_frame)
+
+        # Coordinate frame for fingers pose
+        for name, tf in f3rm_tfs.items():
+            pose_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.03)
+            pose_frame.transform(tf).transform(transform)
+            visualizer.add_o3d_mesh(f"{label}/{name}", pose_frame)
 
         # Gripper mesh
         gripper_mesh = o3d.geometry.TriangleMesh(base_gripper_mesh)
