@@ -70,6 +70,10 @@ For colmap method:
 ```
 ns-train f3rm --max-num-iterations 5000 --output_dir f3rm_outputs --timestamp '' nerfstudio-data --data datasets/eyeinhand_nerf1/img_folder --orientation-method none --auto-scale-poses True
 ```
+With experiment naming:
+```
+ns-train f3rm --max-num-iterations 5000 --output_dir f3rm_outputs --experiment_name name --timestamp '' nerfstudio-data --data ./datasets/eyeinhand_nerf1/img_1734784913.2326946 --orientation-method none --auto-scale-poses True
+```
 
 We set `--output-dir` to a separate output directory to Nerfstudio and `--timestamp` to empty string, so that the
 outputs are saved to `f3rm_outputs/scene_001/f3rm`.

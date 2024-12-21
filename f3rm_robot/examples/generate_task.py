@@ -71,16 +71,21 @@ def visualize_demos(
     visualizer.add_o3d_point_cloud("scene_pcd", scene_pcd, point_size=0.005 + 0.001)
     # The dict numbers represent the ordering of the fingers comming from the hand server.
     finger_order = {
-    'Index': 3,
-    'Little': 0,
+    'Index': 1,
+    'Little': 4,
     'Middle': 2,
-    'Ring': 1,
-    'Thumb': 4,
+    'Ring': 3,
+    'Thumb': 0,
     }
+    # invert the sign of the first joint to match real hand.
+    joint_correction = np.ones(4)
+    joint_correction[0]*= -1
     # Show query points, coordinate frame, and gripper mesh for each demo
     # base_gripper_mesh = get_panda_gripper_mesh()
     try:
-        joints = [np.array([[demo["joint_state"][i] for i in finger_order.values()]]).flatten() for demo in demo_joints]
+        joints = []
+        for demo in demo_joints:
+            joints.append(np.array([[np.array(demo["joint_state"][i])*joint_correction for i in finger_order.values()]]).flatten())
     except:
         print("Joints not provided.")
         joints = [np.zeros(20) for demo in demo_joints]
