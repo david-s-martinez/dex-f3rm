@@ -140,7 +140,7 @@ def generate_task(
 
     # Sample query points and transform by demo poses. The optimization can be noisy depending on the sampling of the
     # query points, so you might want to try multiple different samples.
-    query_points = sample_query_points(num_query_points, std_dev=qp_std_dev)
+    query_points = sample_query_points(num_query_points, mean=(0.025,0.0,0.0), std_dev=qp_std_dev)
     qp_transformed = demo_poses.transform_points(query_points)
     qp_transformed = qp_transformed.to(device)
 
@@ -158,7 +158,7 @@ def generate_task(
     )
     print(f"Created task '{task.name}' with {task.num_demos} demos and {task.num_query_points} query points.")
     if save:
-        save_path = f"{task.name}.pt"
+        save_path = f"f3rm_robot/assets/hithand_tasks/{task.name}.pt"
         torch.save(task, save_path)
         print(f"Saved task to {save_path}")
 
@@ -188,7 +188,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--demo_fname", type=str, default="scene_demo.json", help="Name of the demo file.")
     parser.add_argument("--num_query_points", type=int, default=100, help="Number of query points to sample.")
-    parser.add_argument("--qp_std_dev", type=float, default=0.0075, help="Standard deviation of query points.")
+    parser.add_argument("--qp_std_dev", type=float, default=0.025, help="Standard deviation of query points.")
     parser.add_argument("--save", action="store_true", help="Save the task to disk under the task name.")
     parser.add_argument("--disable_visualize", action="store_true", help="Disable visualization of the task.")
     parser.add_argument("--viser_host", type=str, default="localhost", help="Host for Viser Visualizer.")

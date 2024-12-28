@@ -9,7 +9,7 @@ from nerfstudio.fields.base_field import Field
 from params_proto import PrefixProto, Proto
 from pytorch3d.transforms import Transform3d
 
-from f3rm_robot.assets import get_panda_gripper_mesh
+from f3rm_robot.assets import get_panda_gripper_mesh, get_hithand_gripper_mesh
 from f3rm_robot.field_adapter import (
     FeatureFieldAdapter,
     get_alpha,
@@ -47,7 +47,8 @@ def get_gripper_points() -> torch.Tensor:
     We cache this method as creating the voxel grid is a bit slow, and we can reuse the same points for all grasps.
     """
     # Load mesh and convert to voxel grid
-    mesh = get_panda_gripper_mesh()
+    # mesh = get_panda_gripper_mesh()
+    mesh,_ = get_hithand_gripper_mesh(np.zeros(20))
     voxel_grid = o3d.geometry.VoxelGrid.create_from_triangle_mesh(mesh, voxel_size=CollisionArgs.voxel_size)
 
     # Get (x, y, z) coordinates of the voxels
