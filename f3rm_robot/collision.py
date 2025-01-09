@@ -64,9 +64,35 @@ def get_gripper_points() -> torch.Tensor:
     voxel_points = torch.tensor(voxel_points).float().to(device)
     return voxel_points
 
+def get_gripper_fk_points(joints) -> torch.Tensor:
+    """
+    Get the points (i.e., voxels) that the Panda gripper occupies. The mesh we load only includes the surface of the
+    gripper, but this should be sufficient for coarse collision checking. You should do more sophisticated collision
+    checking in your downstream motion planner.
+
+    We cache this method as creating the voxel grid is a bit slow, and we can reuse the same points for all grasps.
+    """
+    # Load mesh and convert to voxel grid
+    # mesh = get_panda_gripper_mesh()
+    joint_values_np = joints.detach().cpu().numpy().reshape(5,4)
+    mesh,_ = get_hithand_gripper_mesh(joint_values_np)
+    voxel_grid = o3d.geometry.VoxelGrid.create_from_triangle_mesh(mesh, voxel_size=CollisionArgs.voxel_size)
+
+    # Get (x, y, z) coordinates of the voxels
+    voxel_grid_indices = [v.grid_index for v in voxel_grid.get_voxels()]
+    voxel_points = np.array([voxel_grid.get_voxel_center_coordinate(idx) for idx in voxel_grid_indices])
+
+    if not CollisionArgs.allow_finger_collisions:
+        # Remove points with z < 0.035 (i.e., points that are in the fingers)
+        voxel_points = voxel_points[voxel_points[:, 2] >= 0.035]
+
+    # Convert to tensor
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    voxel_points = torch.tensor(voxel_points).float().to(device)
+    return voxel_points
 
 def get_collision_info(
-    field: Field, grasps_to_nerf: Transform3d
+    field: Field, grasps_to_nerf: Transform3d, joints: torch.tensor = None
 ) -> Tuple[Bool[torch.Tensor, "num_grasps"], Float[torch.Tensor, "num_grasps num_points 3"]]:
     """
     Check if the gripper has a collision with the scene for the given grasps. Call this with torch.no_grad unless you
@@ -81,8 +107,21 @@ def get_collision_info(
         gripper_points: the transformed gripper points in the NeRF coordinate frame for vis purposes.
     """
     # Transform gripper points by the grasps into the NeRF coordinate system
-    og_gripper_points = get_gripper_points()
-    gripper_points = grasps_to_nerf.transform_points(og_gripper_points)
+    if joints is None:
+        og_gripper_points = get_gripper_points()
+        gripper_points = grasps_to_nerf.transform_points(og_gripper_points)
+    else:
+        og_gripper_points = [get_gripper_fk_points(joint) for joint in joints]
+        max_m = max(points.shape[0] for points in og_gripper_points)
+
+        # Pad points to create a batched tensor
+        padded_points = torch.zeros((len(joints), max_m, 3),device=grasps_to_nerf.device)
+        for i, points in enumerate(og_gripper_points):
+            padded_points[i, :points.shape[0], :] = points
+
+        # Apply batched transformation
+        gripper_points = grasps_to_nerf.transform_points(padded_points)
+
     if gripper_points.ndim == 2:
         gripper_points = gripper_points.unsqueeze(0)
     gripper_points_flat = gripper_points.view(-1, 3)
@@ -106,7 +145,7 @@ def get_collision_info(
     return collision_detected, gripper_points
 
 
-def has_collision(feature_field: FeatureFieldAdapter, grasps_to_world: Transform3d) -> Bool[torch.Tensor, "num_grasps"]:
+def has_collision(feature_field: FeatureFieldAdapter, grasps_to_world: Transform3d, joints: torch.tensor) -> Bool[torch.Tensor, "num_grasps"]:
     """
     Check if the gripper has a collision with the scene for the given grasps. Call this with torch.no_grad unless you
     need the gradients, otherwise it is much slower.
@@ -114,4 +153,4 @@ def has_collision(feature_field: FeatureFieldAdapter, grasps_to_world: Transform
     Returns a boolean tensor for whether a collision was detected for each grasp
     """
     grasps_to_nerf = grasps_to_world.compose(feature_field.world_to_nerf)
-    return get_collision_info(field=feature_field.rgb_field, grasps_to_nerf=grasps_to_nerf)[0]
+    return get_collision_info(field=feature_field.rgb_field, grasps_to_nerf=grasps_to_nerf, joints = joints)[0]

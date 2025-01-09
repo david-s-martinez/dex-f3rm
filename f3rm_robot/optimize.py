@@ -223,6 +223,10 @@ def language_pose_optimization(
     # multiply by a scale factor so the scale is more reasonable for optimization. You can tune this to your liking.
     translations = voxel_grid.repeat_interleave(args.num_rots_per_voxel, dim=0)
     rotations = random_quaternions(len(translations), device=device)
+    # TODO: try use selected demo joint values / preshape to initialize.
+    joints = torch.rand(len(translations), 20, device = device)
+    joints[:, ::4] = 0
+    # joints = torch.zeros(len(translations), 20, device = device)
     rot_scale = 0.1
     rotations = rotations * rot_scale
     metrics["num_proposals"] = {"initial": len(translations)}
@@ -242,7 +246,8 @@ def language_pose_optimization(
     # Remove initial grasps in collision. We did not optimize our collision checking, so it is a bit slow.
     grasps_to_world = get_grasps_to_world(translations, rotations)
     with torch.no_grad():
-        collision_detected = has_collision(feature_field, grasps_to_world)
+        collision_detected = has_collision(feature_field, grasps_to_world, None)
+        # collision_detected = has_collision(feature_field, grasps_to_world, joints)
     translations = translations[~collision_detected]
     rotations = rotations[~collision_detected]
     metrics["num_proposals"]["initial_cfree"] = len(translations)
@@ -252,11 +257,12 @@ def language_pose_optimization(
     permutation = torch.randperm(len(translations), device=device)
     translations = translations[permutation]
     rotations = rotations[permutation]
-
+    joints = joints[permutation]
     # Setup optimizer
     translations.requires_grad_()
     rotations.requires_grad_()
-    optimizer = torch.optim.Adam([translations, rotations], lr=args.lr)
+    joints.requires_grad_()
+    optimizer = torch.optim.Adam([translations, rotations, joints], lr=args.lr)
     pose_loss_fn = torch.nn.CosineSimilarity()
     language_guidance_fn = get_language_guidance_fn(voxel_sims, query_emb)
     batch_size = args.ray_samples_per_batch // len(query_points)
@@ -312,18 +318,22 @@ def language_pose_optimization(
             losses, best_indices = torch.topk(step_losses, k=new_num_proposals, largest=False)
             translations = translations[best_indices].detach().clone()
             rotations = rotations[best_indices].detach().clone()
+            joints = joints[best_indices].detach().clone()
             # Need to set up optimizer again
             translations.requires_grad_()
             rotations.requires_grad_()
-            optimizer = torch.optim.Adam([translations, rotations], lr=args.lr)
+            joints.requires_grad_()
+            optimizer = torch.optim.Adam([translations, rotations, joints], lr=args.lr)
             metrics["num_proposals"][f"pruned_step_{step:04d}"] = new_num_proposals
 
     # Optimization finished, check remaining grasps for collisions
     grasps_to_world = get_grasps_to_world(translations, rotations)
     with torch.no_grad():
-        collision_detected = has_collision(feature_field, grasps_to_world)
+        # collision_detected = has_collision(feature_field, grasps_to_world, joints)
+        collision_detected = has_collision(feature_field, grasps_to_world, None)
     print(f"Removed {collision_detected.sum()} of {len(grasps_to_world)} optimized proposals in collision")
     grasps_to_world = grasps_to_world[~collision_detected]
+    joints = joints[~collision_detected]
     print(f'Final number of 6-DOF proposals for "{query}": {len(grasps_to_world)}')
     metrics["num_proposals"]["final_cfree"] = len(grasps_to_world)
 
@@ -331,13 +341,15 @@ def language_pose_optimization(
     masked_losses = step_losses[~collision_detected]
     sorted_losses, sorted_indices = masked_losses.sort(descending=False)
     grasps_to_world = grasps_to_world[sorted_indices]
-    results = {"grasps_to_world": grasps_to_world, "metrics": metrics}
-
+    joints = joints[sorted_indices]
+    results = {"grasps_to_world": grasps_to_world, "joints": joints ,"metrics": metrics}
     # Show the best grasps without collisions
     if args.visualize:
         best_losses = sorted_losses[: args.num_poses_to_visualize]
         best_grasps_to_world = grasps_to_world[: args.num_poses_to_visualize]
-        all_verts, all_faces = get_hand_meshes(best_grasps_to_world)
+        joints = joints[: args.num_poses_to_visualize]
+        all_verts, all_faces = get_hand_meshes(best_grasps_to_world, None)
+        # all_verts, all_faces = get_hand_meshes(best_grasps_to_world, joints)
         # We use jet cmap as viser lighting is a bit messed up for turbo
         heatmap = torch.from_numpy(get_heatmap(best_losses, invert=True, cmap_name="jet")).to(device)
         gripper_meshes = []

@@ -141,22 +141,43 @@ def get_gripper_meshes(gripper_poses: Transform3d) -> Tuple[Float[np.ndarray, "n
     all_faces = all_faces.cpu().numpy()
     return all_vertices, all_faces
 
-def get_hand_meshes(gripper_poses: Transform3d) -> Tuple[Float[np.ndarray, "n v 3"], Float[np.ndarray, "n f 3"]]:
+def get_hand_meshes(gripper_poses: Transform3d, joints: torch.tensor = None) -> Tuple[Float[np.ndarray, "n v 3"], Float[np.ndarray, "n f 3"]]:
     """
     Get vertices and faces for given gripper poses. Used for visualization purposes and returns the vertices and faces
     for each gripper pose.
     """
-    # Get the gripper mesh and transform the vertices by each gripper pose
-    gripper_mesh, f3rm_tfs = get_hithand_gripper_mesh()
-    vertices = np.asarray(gripper_mesh.vertices)
-    vertices = torch.from_numpy(vertices).float().to(gripper_poses.device)
-    with torch.no_grad():
-        all_vertices = gripper_poses.transform_points(vertices)
+    if joints is None:
+        gripper_mesh, f3rm_tfs = get_hithand_gripper_mesh()
+        vertices = np.asarray(gripper_mesh.vertices)
+        vertices = torch.from_numpy(vertices).float().to(gripper_poses.device)
+        with torch.no_grad():
+            all_vertices = gripper_poses.transform_points(vertices)
 
-    # Get the faces
-    faces = np.asarray(gripper_mesh.triangles)
-    faces = torch.from_numpy(faces).to(gripper_poses.device)
-    all_faces = faces.repeat(len(gripper_poses), 1, 1)
+        # Get the faces
+        faces = np.asarray(gripper_mesh.triangles)
+        faces = torch.from_numpy(faces).to(gripper_poses.device)
+        all_faces = faces.repeat(len(gripper_poses), 1, 1)
+    else: 
+        n = joints.shape[0]
+        reshaped_joints = joints.reshape(n, 5, 4)
+        # Get the gripper mesh and transform the vertices by each gripper pose
+        all_faces_torch = []
+        all_vertices_torch = []
+        for joint in reshaped_joints:
+            gripper_mesh, f3rm_tfs = get_hithand_gripper_mesh(joint.detach().cpu().numpy())
+
+            vertices = np.asarray(gripper_mesh.vertices)
+            vertices = torch.from_numpy(vertices).float().to(gripper_poses.device)
+
+            faces = np.asarray(gripper_mesh.triangles)
+            faces = torch.from_numpy(faces).to(gripper_poses.device)
+            # Get the faces
+            all_faces_torch.append(faces)
+            all_vertices_torch.append(vertices)
+        
+        with torch.no_grad():
+            all_faces = torch.stack(all_faces_torch)
+            all_vertices = gripper_poses.transform_points(torch.stack(all_vertices_torch))
 
     # Convert to numpy
     all_vertices = all_vertices.cpu().numpy()
