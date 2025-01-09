@@ -10,7 +10,7 @@ from pytorch3d.transforms import Transform3d
 from tqdm import tqdm
 
 from f3rm_robot.load import LoadState
-
+from f3rm_robot.assets import get_panda_gripper_mesh, get_hithand_gripper_mesh
 
 def get_heatmap(
     values: Float[Union[torch.Tensor, np.ndarray], "n"], cmap_name: str = "turbo", invert: bool = False
@@ -126,6 +126,28 @@ def get_gripper_meshes(gripper_poses: Transform3d) -> Tuple[Float[np.ndarray, "n
     """
     # Get the gripper mesh and transform the vertices by each gripper pose
     gripper_mesh = get_gripper_mesh()
+    vertices = np.asarray(gripper_mesh.vertices)
+    vertices = torch.from_numpy(vertices).float().to(gripper_poses.device)
+    with torch.no_grad():
+        all_vertices = gripper_poses.transform_points(vertices)
+
+    # Get the faces
+    faces = np.asarray(gripper_mesh.triangles)
+    faces = torch.from_numpy(faces).to(gripper_poses.device)
+    all_faces = faces.repeat(len(gripper_poses), 1, 1)
+
+    # Convert to numpy
+    all_vertices = all_vertices.cpu().numpy()
+    all_faces = all_faces.cpu().numpy()
+    return all_vertices, all_faces
+
+def get_hand_meshes(gripper_poses: Transform3d) -> Tuple[Float[np.ndarray, "n v 3"], Float[np.ndarray, "n f 3"]]:
+    """
+    Get vertices and faces for given gripper poses. Used for visualization purposes and returns the vertices and faces
+    for each gripper pose.
+    """
+    # Get the gripper mesh and transform the vertices by each gripper pose
+    gripper_mesh, f3rm_tfs = get_hithand_gripper_mesh()
     vertices = np.asarray(gripper_mesh.vertices)
     vertices = torch.from_numpy(vertices).float().to(gripper_poses.device)
     with torch.no_grad():

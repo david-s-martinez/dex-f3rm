@@ -81,28 +81,43 @@ def get_panda_gripper_mesh() -> o3d.geometry.TriangleMesh:
     return o3d.io.read_triangle_mesh(asset_path)
 
 # TODO: use IK instead of fixed tf matrix
-wrist2grasp = np.array([
+wrist_T_grasp = np.array([
     [-0.000,  1.000, -0.000,  0.045],
     [1.000,  0.000, -0.000,  0.000],
     [0.000, -0.000, -1.000,  0.150],
     [0.000,  0.000,  0.000,  1.000],
-]) # computed using ros2 run tf2_ros tf2_echo base_link_hithand f3rm_link
+]) # computed using ros2 run tf2_ros tf2_echo base_link_hithand f3rm_link (grasp in wrist frame) wrist_T_grasp | grasp2wrist
 
-def get_hithand_gripper_mesh(joint) -> o3d.geometry.TriangleMesh:
+def get_hithand_gripper_mesh(joint = np.zeros((5,4)), is_debug = False) -> o3d.geometry.TriangleMesh:
+    # joint->(5,4) (5 fingers, 4 joints)
+    # The dict numbers represent the ordering of the fingers comming from the hand server.
+    finger_order = {
+    'Index': 1,
+    'Little': 4,
+    'Middle': 2,
+    'Ring': 3,
+    'Thumb': 0,
+    }
+    # invert the sign of the first joint to match real hand.
+    joint_correction = np.ones(4)
+    joint_correction[0]*= -1
+    joint = np.array([[np.array(joint[i])*joint_correction for i in finger_order.values()]]).flatten()
+    
     asset_path = get_asset_path("hithand_palm/hithand.urdf")
     robot = urdfpy.URDF.load(asset_path)
 
     f3rm_names = {link.name:i for i, link in enumerate(robot.links) if "f3rm" in link.name}
-    print(f"names: {f3rm_names}")
+    if is_debug:
+        print(f"names: {f3rm_names}")
 
     fk, fk_link = get_robot_fk(robot, joint)
 
-    f3rm_frames = {f"wrist_2_{name}": np.linalg.inv(wrist2grasp) @ fk_link[robot.links[idx]] for name, idx in f3rm_names.items()}
+    f3rm_frames = {f"wrist_2_{name}": np.linalg.inv(wrist_T_grasp) @ fk_link[robot.links[idx]] for name, idx in f3rm_names.items()}
 
     mesh_robot_total = o3d.geometry.TriangleMesh()
     for tm in fk:
         pose = fk[tm]
-        pose = np.linalg.inv(wrist2grasp) @ pose
+        pose = np.linalg.inv(wrist_T_grasp) @ pose
         mesh_robot = o3d.geometry.TriangleMesh()
         mesh_robot.vertices = o3d.pybind.utility.Vector3dVector(np.asarray(tm.vertices.copy()))
         mesh_robot.triangles = o3d.pybind.utility.Vector3iVector(np.asarray(tm.faces.copy()))

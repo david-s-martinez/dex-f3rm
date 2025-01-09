@@ -28,7 +28,7 @@ from f3rm_robot.initial_proposals import (
 )
 from f3rm_robot.load import LoadState, load_nerfstudio_outputs
 from f3rm_robot.task import Task, get_tasks
-from f3rm_robot.utils import get_gripper_meshes, get_heatmap, sample_point_cloud
+from f3rm_robot.utils import get_gripper_meshes, get_hand_meshes, get_heatmap, sample_point_cloud
 from f3rm_robot.visualizer import BaseVisualizer, ViserVisualizer
 
 args = OptimizationArgs
@@ -337,7 +337,7 @@ def language_pose_optimization(
     if args.visualize:
         best_losses = sorted_losses[: args.num_poses_to_visualize]
         best_grasps_to_world = grasps_to_world[: args.num_poses_to_visualize]
-        all_verts, all_faces = get_gripper_meshes(best_grasps_to_world)
+        all_verts, all_faces = get_hand_meshes(best_grasps_to_world)
         # We use jet cmap as viser lighting is a bit messed up for turbo
         heatmap = torch.from_numpy(get_heatmap(best_losses, invert=True, cmap_name="jet")).to(device)
         gripper_meshes = []
