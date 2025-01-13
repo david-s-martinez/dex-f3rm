@@ -1,8 +1,84 @@
 import os
-
+import torch
 import open3d as o3d
 import numpy as np
 import urdfpy
+from pytorch3d.transforms import Transform3d
+from collections import OrderedDict
+from urdfpy import URDF
+
+def collision_trimesh_fk_lfk(robot, cfg=None, links=None):
+    """Computes the poses of the URDF's collision trimeshes using fk.
+
+    Parameters
+    ----------
+    cfg : dict or (n), float
+        A map from joints or joint names to configuration values for
+        each joint, or a list containing a value for each actuated joint
+        in sorted order from the base link.
+        If not specified, all joints are assumed to be in their default
+        configurations.
+    links : list of str or list of :class:`.Link`
+        The links or names of links to perform forward kinematics on.
+        Only trimeshes from these links will be in the returned map.
+        If not specified, all links are returned.
+
+    Returns
+    -------
+    fk : dict
+        A map from :class:`~trimesh.base.Trimesh` objects that are
+        part of the collision geometry of the specified links to the
+        4x4 homogenous transform matrices that position them relative
+        to the base link's frame.
+    """
+    lfk = robot.link_fk(cfg=cfg, links=links)
+
+    fk = OrderedDict()
+    for link in lfk:
+        pose = lfk[link]
+        cm = link.collision_mesh
+        if cm is not None:
+            fk[cm] = pose
+    return fk, lfk
+
+def visual_trimesh_fk_lfk(robot, cfg=None, links=None):
+    """Computes the poses of the URDF's visual trimeshes using fk.
+
+    Parameters
+    ----------
+    cfg : dict or (n), float
+        A map from joints or joint names to configuration values for
+        each joint, or a list containing a value for each actuated joint
+        in sorted order from the base link.
+        If not specified, all joints are assumed to be in their default
+        configurations.
+    links : list of str or list of :class:`.Link`
+        The links or names of links to perform forward kinematics on.
+        Only trimeshes from these links will be in the returned map.
+        If not specified, all links are returned.
+
+    Returns
+    -------
+    fk : dict
+        A map from :class:`~trimesh.base.Trimesh` objects that are
+        part of the visual geometry of the specified links to the
+        4x4 homogenous transform matrices that position them relative
+        to the base link's frame.
+    """
+    lfk = robot.link_fk(cfg=cfg, links=links)
+
+    fk = OrderedDict()
+    for link in lfk:
+        for visual in link.visuals:
+            for mesh in visual.geometry.meshes:
+                pose = lfk[link].dot(visual.origin)
+                if visual.geometry.mesh is not None:
+                    if visual.geometry.mesh.scale is not None:
+                        S = np.eye(4, dtype=np.float64)
+                        S[:3,:3] = np.diag(visual.geometry.mesh.scale)
+                        pose = pose.dot(S)
+                fk[mesh] = pose
+    return fk, lfk
 _MODULE_PATH = os.path.dirname(__file__)
 
 
@@ -62,7 +138,7 @@ def full_joint_conf_from_partial_joint_conf(partial_joint_conf):
     full_joint_conf = full_joint_pos
     return full_joint_conf
 
-def get_robot_fk(robot, joint_conf):
+def get_robot_fk(robot, joint_conf, is_fk_mesh = True):
     # get the full joint config
     if joint_conf.shape[0] == 15:
         joint_conf_full = full_joint_conf_from_partial_joint_conf(joint_conf)
@@ -72,9 +148,13 @@ def get_robot_fk(robot, joint_conf):
         raise Exception('Joint_conf has the wrong size in dimension one: %d. Should be 15 or 20' %
                         joint_conf.shape[0])
     cfg_map = get_hand_cfg_map(joint_conf_full)
-    fk = robot.visual_trimesh_fk(cfg=cfg_map)
 
-    return fk, robot.link_fk(cfg=cfg_map)
+    if is_fk_mesh:
+        fk, lfk = visual_trimesh_fk_lfk(robot, cfg=cfg_map)
+        return fk, lfk
+    else:
+        lfk  = robot.link_fk(cfg=cfg_map)
+        return None, lfk
 
 def get_panda_gripper_mesh() -> o3d.geometry.TriangleMesh:
     asset_path = get_asset_path("panda_gripper_visual.obj")
@@ -87,8 +167,24 @@ wrist_T_grasp = np.array([
     [0.000, -0.000, -1.000,  0.150],
     [0.000,  0.000,  0.000,  1.000],
 ]) # computed using ros2 run tf2_ros tf2_echo base_link_hithand f3rm_link (grasp in wrist frame) wrist_T_grasp | grasp2wrist
+grasp_T_wrist = np.linalg.inv(wrist_T_grasp)
 
-def get_hithand_gripper_mesh(joint = np.zeros((5,4)), is_debug = False) -> o3d.geometry.TriangleMesh:
+def get_query_frames_fk(joint, is_debug = False, is_return_tensor = True):
+    # Reorder and apply correction
+    joint = apply_joint_correction(joint)
+    asset_path = get_asset_path("hithand_palm/hithand.urdf")
+    robot = URDF.load(asset_path)
+    f3rm_names = {link.name:i for i, link in enumerate(robot.links) if "f3rm" in link.name}
+    if is_debug:
+        print(f"names: {f3rm_names}")
+    _, fk_link = get_robot_fk(robot, joint, False)
+    if is_return_tensor:
+        f3rm_frames = Transform3d(matrix=torch.from_numpy(np.stack([(grasp_T_wrist @ fk_link[robot.links[idx]]).T for name, idx in f3rm_names.items()])).float())
+    else:
+        f3rm_frames = {f"grasp_T_{name}": grasp_T_wrist @ fk_link[robot.links[idx]] for name, idx in f3rm_names.items()}
+    return f3rm_frames
+
+def apply_joint_correction(joint):
     # joint->(5,4) (5 fingers, 4 joints)
     # The dict numbers represent the ordering of the fingers comming from the hand server.
     finger_order = {
@@ -101,23 +197,26 @@ def get_hithand_gripper_mesh(joint = np.zeros((5,4)), is_debug = False) -> o3d.g
     # invert the sign of the first joint to match real hand.
     joint_correction = np.ones(4)
     joint_correction[0]*= -1
-    joint = np.array([[np.array(joint[i])*joint_correction for i in finger_order.values()]]).flatten()
-    
-    asset_path = get_asset_path("hithand_palm/hithand.urdf")
-    robot = urdfpy.URDF.load(asset_path)
+    indices = np.array(list(finger_order.values()))
+    return (joint[indices, :] * joint_correction[None, :]).flatten()
 
+def get_hithand_gripper_mesh(joint = np.zeros((5,4)), is_debug = False) -> o3d.geometry.TriangleMesh:
+    # Reorder and apply correction
+    joint = apply_joint_correction(joint)
+    asset_path = get_asset_path("hithand_palm/hithand.urdf")
+    robot = URDF.load(asset_path)
     f3rm_names = {link.name:i for i, link in enumerate(robot.links) if "f3rm" in link.name}
     if is_debug:
         print(f"names: {f3rm_names}")
 
     fk, fk_link = get_robot_fk(robot, joint)
 
-    f3rm_frames = {f"wrist_2_{name}": np.linalg.inv(wrist_T_grasp) @ fk_link[robot.links[idx]] for name, idx in f3rm_names.items()}
+    f3rm_frames = {f"grasp_T_{name}": grasp_T_wrist @ fk_link[robot.links[idx]] for name, idx in f3rm_names.items()}
 
     mesh_robot_total = o3d.geometry.TriangleMesh()
     for tm in fk:
         pose = fk[tm]
-        pose = np.linalg.inv(wrist_T_grasp) @ pose
+        pose = grasp_T_wrist @ pose
         mesh_robot = o3d.geometry.TriangleMesh()
         mesh_robot.vertices = o3d.pybind.utility.Vector3dVector(np.asarray(tm.vertices.copy()))
         mesh_robot.triangles = o3d.pybind.utility.Vector3iVector(np.asarray(tm.faces.copy()))

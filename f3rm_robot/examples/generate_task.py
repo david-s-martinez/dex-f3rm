@@ -23,7 +23,7 @@ from jaxtyping import Float
 from pytorch3d.transforms import Transform3d
 from scipy.spatial.transform import Rotation
 
-from f3rm_robot.assets import get_panda_gripper_mesh, get_hithand_gripper_mesh
+from f3rm_robot.assets import get_panda_gripper_mesh, get_hithand_gripper_mesh, get_query_frames_fk
 from f3rm_robot.load import LoadState, load_nerfstudio_outputs
 from f3rm_robot.task import Task, sample_query_points
 from f3rm_robot.visualizer import BaseVisualizer, ViserVisualizer
@@ -41,18 +41,25 @@ def load_demos(demo_path: Path) -> Tuple[Dict, Transform3d]:
 
     # Load demo poses
     transforms = []
+    joints = []
+    torques = []
     for label, pose in zip(demo_dict["demo_labels"], demo_dict["demo_poses"]):
         transform = np.eye(4)
         transform[:3, :3] = Rotation.from_quat(pose["quat_xyzw"]).as_matrix()
         transform[:3, 3] = pose["translation"]
         transform = torch.from_numpy(transform).float()
-
+        joints_torch = torch.FloatTensor(pose["joint_state"]).float()
+        torques_torch = torch.FloatTensor(pose["torque_state"]).float()
         # Need to take transpose as Transform3d uses row instead of column vectors
         transform = Transform3d(matrix=transform.T)
         transforms.append(transform)
+        joints.append(joints_torch)
+        torques.append(torques_torch)
 
     transforms = Transform3d.stack(*transforms)
-    return demo_dict, transforms
+    joints = torch.stack(joints)
+    torques = torch.stack(torques)
+    return demo_dict, transforms, joints, torques
 
 
 def visualize_demos(
@@ -61,7 +68,7 @@ def visualize_demos(
     demo_labels: List[str],
     demo_poses: Transform3d,
     demo_qps: Float[torch.Tensor, "d n 3"],
-    demo_joints: Dict
+    demo_joints: np.ndarray
 ):
     # We use helpers from the main optimization scripts for visualization
     from f3rm_robot.optimize import get_scene_pcd
@@ -72,13 +79,13 @@ def visualize_demos(
     # Show query points, coordinate frame, and gripper mesh for each demo
     # base_gripper_mesh = get_panda_gripper_mesh()
     try:
-        joints = [demo["joint_state"] for demo in demo_joints]
+        joints = [demo for demo in demo_joints]
     except:
         print("Joints not provided.")
         joints = [np.zeros((5,4)) for demo in demo_joints]
 
     for label, qps, pose, joint in zip(demo_labels, demo_qps, demo_poses, joints):
-        base_gripper_mesh, f3rm_tfs = get_hithand_gripper_mesh(joint)
+        base_gripper_mesh, f3rm_tfs = get_hithand_gripper_mesh(np.array(joint))
         base_gripper_mesh.compute_vertex_normals()
         # Transformation matrix, need to transpose Transform3d matrix as it uses row vectors
         transform = pose.get_matrix()[0].T
@@ -115,6 +122,7 @@ def generate_task(
     disable_visualize: bool,
     viser_host: str,
     viser_port: int,
+    is_finger_qp: bool = True,
 ):
     """Generate Task for the given scene and demos."""
     # Load the feature field
@@ -123,12 +131,23 @@ def generate_task(
 
     # Load the demos for this scene
     dataset = load_state.pipeline.datamanager.get_datapath()
-    demo_dict, demo_poses = load_demos(dataset / demo_fname)
+    demo_dict, demo_poses, joints_torch, torques_torch = load_demos(dataset / demo_fname)
 
     # Sample query points and transform by demo poses. The optimization can be noisy depending on the sampling of the
     # query points, so you might want to try multiple different samples.
-    query_points = sample_query_points(num_query_points, mean=(0.025,0.0,0.0), std_dev=qp_std_dev)
-    qp_transformed = demo_poses.transform_points(query_points)
+
+    joints_torch = joints_torch.to(device)
+    torques_torch = torques_torch.to(device)
+    joints_np = joints_torch.detach().cpu().numpy().reshape(-1,5,4)
+    if is_finger_qp:
+        link_points = sample_query_points(int(120/6), mean=(0.0,0.0,0.0), std_dev=0.0075)
+        query_points = torch.stack([get_query_frames_fk(joint).transform_points(link_points) for joint in joints_np])
+        n, j, q, d = query_points.shape
+        query_points = query_points.view(n, j * q, d) # n_demo, n_joints, n_query points, dim_query points
+        qp_transformed = demo_poses.transform_points(query_points)
+    else:
+        query_points = sample_query_points(num_query_points, mean=(0.025,0.0,0.0), std_dev=qp_std_dev)
+        qp_transformed = demo_poses.transform_points(query_points)
     qp_transformed = qp_transformed.to(device)
 
     # Get features and density for each demo from feature field
@@ -138,10 +157,12 @@ def generate_task(
 
     # Create task and save
     task = Task(
-        name=demo_dict["task"],
-        query_points=query_points,
-        demo_features=outputs["feature"],
-        demo_density=outputs["density"],
+        name = demo_dict["task"],
+        query_points = query_points,
+        demo_features = outputs["feature"],
+        demo_density = outputs["density"],
+        demo_joints = joints_torch,
+        demo_torques = torques_torch,  
     )
     print(f"Created task '{task.name}' with {task.num_demos} demos and {task.num_query_points} query points.")
     if save:
@@ -153,7 +174,12 @@ def generate_task(
     if not disable_visualize:
         visualizer = ViserVisualizer(host=viser_host, port=viser_port)
         visualize_demos(
-            visualizer, load_state, demo_labels=demo_dict["demo_labels"], demo_poses=demo_poses, demo_qps=qp_transformed, demo_joints= demo_dict["demo_poses"]
+            visualizer, 
+            load_state, 
+            demo_labels = demo_dict["demo_labels"], 
+            demo_poses = demo_poses, 
+            demo_qps = qp_transformed, 
+            demo_joints = joints_np
         )
         try:
             input("Press Enter or Ctrl+C to exit.")

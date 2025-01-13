@@ -202,7 +202,7 @@ def get_language_guidance_fn(voxel_sims: Float[torch.Tensor, "num_voxels"], quer
 
 
 def language_pose_optimization(
-    feature_field: FeatureFieldAdapter, clip_model: CLIP, query: str, device: torch.device
+    feature_field: FeatureFieldAdapter, clip_model: CLIP, query: str, device: torch.device, is_save_gripper_meshes: bool = False
 ) -> Dict[str, Any]:
     """
     Optimize 6-DOF poses for the given language query. We return the ranked grasps after optimization and the metrics.
@@ -245,13 +245,16 @@ def language_pose_optimization(
 
     # Remove initial grasps in collision. We did not optimize our collision checking, so it is a bit slow.
     grasps_to_world = get_grasps_to_world(translations, rotations)
+    print(f'Checking initial collisions for {grasps_to_world.get_matrix().size()}')
     with torch.no_grad():
         collision_detected = has_collision(feature_field, grasps_to_world, None)
         # collision_detected = has_collision(feature_field, grasps_to_world, joints)
     translations = translations[~collision_detected]
     rotations = rotations[~collision_detected]
+    joints = joints[~collision_detected]
     metrics["num_proposals"]["initial_cfree"] = len(translations)
     print(f"Number of 6-DOF proposals: {len(translations)}.")
+    print('Done checking initial collisions')
 
     # Shuffle the remaining proposals
     permutation = torch.randperm(len(translations), device=device)
@@ -328,6 +331,7 @@ def language_pose_optimization(
 
     # Optimization finished, check remaining grasps for collisions
     grasps_to_world = get_grasps_to_world(translations, rotations)
+    print(f'Checking final collisions for {grasps_to_world.get_matrix().size()}')
     with torch.no_grad():
         # collision_detected = has_collision(feature_field, grasps_to_world, joints)
         collision_detected = has_collision(feature_field, grasps_to_world, None)
@@ -336,7 +340,7 @@ def language_pose_optimization(
     joints = joints[~collision_detected]
     print(f'Final number of 6-DOF proposals for "{query}": {len(grasps_to_world)}')
     metrics["num_proposals"]["final_cfree"] = len(grasps_to_world)
-
+    print('Done checking final collisions.')
     # Sort the grasps by their losses before returning
     masked_losses = step_losses[~collision_detected]
     sorted_losses, sorted_indices = masked_losses.sort(descending=False)
@@ -355,14 +359,16 @@ def language_pose_optimization(
         gripper_meshes = []
         for idx, (verts, faces) in enumerate(zip(all_verts, all_faces)):
             visualizer.add_mesh(f"grasps/grasp_{idx + 1}", verts, faces, heatmap[idx])
-            gripper_mesh = o3d.geometry.TriangleMesh()
-            gripper_mesh.vertices = o3d.utility.Vector3dVector(verts)
-            gripper_mesh.triangles = o3d.utility.Vector3iVector(faces)
-            gripper_mesh.paint_uniform_color(heatmap[idx].cpu().numpy())
-            gripper_meshes.append(gripper_mesh)
+            if is_save_gripper_meshes:
+                gripper_mesh = o3d.geometry.TriangleMesh()
+                gripper_mesh.vertices = o3d.utility.Vector3dVector(verts)
+                gripper_mesh.triangles = o3d.utility.Vector3iVector(faces)
+                gripper_mesh.paint_uniform_color(heatmap[idx].cpu().numpy())
+                gripper_meshes.append(gripper_mesh)
         # Single mesh with all the grippers
-        gripper_mesh = reduce(lambda a, b: a + b, gripper_meshes)
-        results["gripper_mesh"] = gripper_mesh
+        if is_save_gripper_meshes:
+            gripper_mesh = reduce(lambda a, b: a + b, gripper_meshes)
+            results["gripper_mesh"] = gripper_mesh
 
     return results
 

@@ -38,6 +38,8 @@ class Task:
     # Features and density for each demo
     demo_features: Float[torch.Tensor, "num_demos num_qps num_channels"]
     demo_density: Float[torch.Tensor, "num_demos num_qps 1"]
+    demo_joints: Float[torch.Tensor, "num_demos num_joints"]
+    demo_torques: Float[torch.Tensor, "num_demos num_torques"]
 
     def __post_init__(self):
         assert len(self.query_points) > 0, f"Query points cannot be empty for task {self.name}"
