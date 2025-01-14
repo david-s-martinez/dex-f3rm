@@ -408,40 +408,111 @@
   </joint>
   <link name="f3rm_grasp" />
 
-  <joint name="hithand_f3rm_thumb" type="fixed">
+  <joint name="hithand_f3rm_thumb_dist" type="fixed">
+    <parent link="Right_Thumb_Phadist" />
+    <child link="f3rm_thumb_dist" />
+    <origin rpy="0 0 0" xyz="-0.015 0.0175 0" />
+  </joint>
+  <link name="f3rm_thumb_dist" />
+
+  <joint name="hithand_f3rm_thumb_med" type="fixed">
     <parent link="Right_Thumb_Phamed" />
-    <child link="f3rm_thumb" />
-    <origin rpy="0 0 0" xyz="0 0.02 0" />
+    <child link="f3rm_thumb_med" />
+    <origin rpy="0 0 0" xyz="0 0.015 0" />
   </joint>
-  <link name="f3rm_thumb" />
+  <link name="f3rm_thumb_med" />
 
-  <joint name="hithand_f3rm_index" type="fixed">
+  <joint name="hithand_f3rm_thumb_prox" type="fixed">
+    <parent link="Right_Thumb_Phaprox" />
+    <child link="f3rm_thumb_prox" />
+    <origin rpy="0 0 0" xyz="0.03 0.0175 0" />
+  </joint>
+  <link name="f3rm_thumb_prox" />
+
+  <joint name="hithand_f3rm_index_dist" type="fixed">
+    <parent link="Right_Index_Phadist" />
+    <child link="f3rm_index_dist" />
+    <origin rpy="0 0 0" xyz="-0.015 0.0175 0" />
+  </joint>
+  <link name="f3rm_index_dist" />
+
+  <joint name="hithand_f3rm_index_med" type="fixed">
     <parent link="Right_Index_Phamed" />
-    <child link="f3rm_index" />
-    <origin rpy="0 0 0" xyz="0 0.02 0" />
+    <child link="f3rm_index_med" />
+    <origin rpy="0 0 0" xyz="0 0.015 0" />
   </joint>
-  <link name="f3rm_index" />
+  <link name="f3rm_index_med" />
 
-  <joint name="hithand_f3rm_middle" type="fixed">
+  <joint name="hithand_f3rm_index_prox" type="fixed">
+    <parent link="Right_Index_Phaprox" />
+    <child link="f3rm_index_prox" />
+    <origin rpy="0 0 0" xyz="0.03 0.0175 0" />
+  </joint>
+  <link name="f3rm_index_prox" />
+
+ <joint name="hithand_f3rm_middle_dist" type="fixed">
+    <parent link="Right_Middle_Phadist" />
+    <child link="f3rm_middle_dist" />
+    <origin rpy="0 0 0" xyz="-0.015 0.0175 0" />
+  </joint>
+  <link name="f3rm_middle_dist" />
+  
+  <joint name="hithand_f3rm_middle_med" type="fixed">
     <parent link="Right_Middle_Phamed" />
-    <child link="f3rm_middle" />
-    <origin rpy="0 0 0" xyz="0 0.02 0" />
+    <child link="f3rm_middle_med" />
+    <origin rpy="0 0 0" xyz="0 0.015 0" />
   </joint>
-  <link name="f3rm_middle" />
+  <link name="f3rm_middle_med" />
+
+  <joint name="hithand_f3rm_middle_prox" type="fixed">
+    <parent link="Right_Middle_Phaprox" />
+    <child link="f3rm_middle_prox" />
+    <origin rpy="0 0 0" xyz="0.03 0.0175 0" />
+  </joint>
+  <link name="f3rm_middle_prox" />
   
-  <joint name="hithand_f3rm_ring" type="fixed">
+  <joint name="hithand_f3rm_ring_dist" type="fixed">
+    <parent link="Right_Ring_Phadist" />
+    <child link="f3rm_ring_dist" />
+    <origin rpy="0 0 0" xyz="-0.015 0.0175 0" />
+  </joint>
+
+  <link name="f3rm_ring_dist" />
+  <joint name="hithand_f3rm_ring_med" type="fixed">
     <parent link="Right_Ring_Phamed" />
-    <child link="f3rm_ring" />
-    <origin rpy="0 0 0" xyz="0 0.02 0" />
+    <child link="f3rm_ring_med" />
+    <origin rpy="0 0 0" xyz="0 0.015 0" />
   </joint>
-  <link name="f3rm_ring" />
+  <link name="f3rm_ring_med" />
+
+  <joint name="hithand_f3rm_ring_prox" type="fixed">
+    <parent link="Right_Ring_Phaprox" />
+    <child link="f3rm_ring_prox" />
+    <origin rpy="0 0 0" xyz="0.03 0.0175 0" />
+  </joint>
+  <link name="f3rm_ring_prox" />
   
-  <joint name="hithand_f3rm_little" type="fixed">
-    <parent link="Right_Little_Phamed" />
-    <child link="f3rm_little" />
-    <origin rpy="0 0 0" xyz="0 0.02 0" />
+ <joint name="hithand_f3rm_little_dist" type="fixed">
+    <parent link="Right_Little_Phadist" />
+    <child link="f3rm_little_dist" />
+    <origin rpy="0 0 0" xyz="-0.015 0.0175 0" />
   </joint>
-  <link name="f3rm_little" />
+
+  <link name="f3rm_little_dist" />
+  <joint name="hithand_f3rm_little_med" type="fixed">
+    <parent link="Right_Little_Phamed" />
+    <child link="f3rm_little_med" />
+    <origin rpy="0 0 0" xyz="0 0.015 0" />
+  </joint>
+  <link name="f3rm_little_med" />
+
+  <joint name="hithand_f3rm_little_prox" type="fixed">
+    <parent link="Right_Little_Phaprox" />
+    <child link="f3rm_little_prox" />
+    <origin rpy="0 0 0" xyz="0.03 0.0175 0" />
+  </joint>
+  <link name="f3rm_little_prox" />
+
   <!-- #########################FINGER######################## -->
   <!-- END of finger macro -->
   <!-- +++++ Finger base joint 0 ++++++ -->

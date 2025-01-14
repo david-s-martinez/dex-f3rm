@@ -1,0 +1,11 @@
+python3 f3rm_robot/examples/generate_task.py --scene f3rm_outputs/teddy_bear/f3rm/config.yml --demo_fname scene_demo_teddy_bear.json --save --disable_visualize
+python3 f3rm_robot/examples/generate_task.py --scene f3rm_outputs/teddy_bear_laying/f3rm/config.yml --demo_fname scene_demo_laying_teddy_bear.json --save --disable_visualize
+python3 f3rm_robot/examples/generate_task.py --scene f3rm_outputs/bowl_cup/f3rm/config.yml --demo_fname scene_demo_bowl.json --save --disable_visualize
+python3 f3rm_robot/examples/generate_task.py --scene f3rm_outputs/bowl_cup/f3rm/config.yml --demo_fname scene_demo_mug.json --save --disable_visualize
+python3 f3rm_robot/examples/generate_task.py --scene f3rm_outputs/headphones_crackers/f3rm/config.yml --demo_fname scene_demo_black_headphones.json --save --disable_visualize
+python3 f3rm_robot/examples/generate_task.py --scene f3rm_outputs/headphones_crackers/f3rm/config.yml --demo_fname scene_demo_crackers_box.json --save --disable_visualize
+python3 f3rm_robot/examples/generate_task.py --scene f3rm_outputs/mentos_sweep/f3rm/config.yml --demo_fname scene_demo_gray_sweep.json --save --disable_visualize
+python3 f3rm_robot/examples/generate_task.py --scene f3rm_outputs/mentos_sweep/f3rm/config.yml --demo_fname scene_demo_mentos_gum.json --save --disable_visualize
+python3 f3rm_robot/examples/generate_task.py --scene f3rm_outputs/cubess/f3rm/config.yml --demo_fname scene_demo_black_foam_cube.json --save --disable_visualize
+python3 f3rm_robot/examples/generate_task.py --scene f3rm_outputs/cubess/f3rm/config.yml --demo_fname scene_demo_rubiks_cube.json --save --disable_visualize
+python3 f3rm_robot/examples/generate_task.py --scene f3rm_outputs/cubess/f3rm/config.yml --demo_fname scene_demo_peach.json --save --disable_visualize

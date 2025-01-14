@@ -13,6 +13,7 @@ density not the alphas, as the voxel size can vary at optimization time.
 """
 
 import json
+import random
 from pathlib import Path
 from typing import Dict, List, Tuple
 
@@ -94,18 +95,18 @@ def visualize_demos(
         qp_pcd = o3d.geometry.PointCloud()
         qp_pcd.points = o3d.utility.Vector3dVector(qps.cpu().numpy())
         qp_pcd.paint_uniform_color([1, 0, 0])
-        visualizer.add_o3d_point_cloud(f"{label}/query_points", qp_pcd, point_size=0.005)
+        visualizer.add_o3d_point_cloud(f"{label}/qp", qp_pcd, point_size=0.005)
 
         # Coordinate frame for gripper pose
         pose_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.03)
         pose_frame.transform(transform)
-        visualizer.add_o3d_mesh(f"{label}/pose_frame", pose_frame)
+        visualizer.add_o3d_mesh(f"{label}/frame", pose_frame)
 
         # Coordinate frame for fingers pose
-        for name, tf in f3rm_tfs.items():
+        for i, (name, tf) in enumerate(f3rm_tfs.items()):
             pose_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.03)
             pose_frame.transform(tf).transform(transform)
-            visualizer.add_o3d_mesh(f"{label}/{name}", pose_frame)
+            visualizer.add_o3d_mesh(f"{label}/{i}", pose_frame)
 
         # Gripper mesh
         gripper_mesh = o3d.geometry.TriangleMesh(base_gripper_mesh)
@@ -122,7 +123,9 @@ def generate_task(
     disable_visualize: bool,
     viser_host: str,
     viser_port: int,
-    is_finger_qp: bool = True,
+    num_fingers: int = 5,
+    num_finger_qf: int = 3,
+    is_finger_qp: bool = True
 ):
     """Generate Task for the given scene and demos."""
     # Load the feature field
@@ -140,11 +143,19 @@ def generate_task(
     torques_torch = torques_torch.to(device)
     joints_np = joints_torch.detach().cpu().numpy().reshape(-1,5,4)
     if is_finger_qp:
-        link_points = sample_query_points(int(120/6), mean=(0.0,0.0,0.0), std_dev=0.0075)
+        tot_num_qp = int(num_query_points/(num_fingers * num_finger_qf + 1))
+        link_points = sample_query_points(tot_num_qp, mean=(0.0,0.0,0.0), std_dev=qp_std_dev)
         query_points = torch.stack([get_query_frames_fk(joint).transform_points(link_points) for joint in joints_np])
         n, j, q, d = query_points.shape
         query_points = query_points.view(n, j * q, d) # n_demo, n_joints, n_query points, dim_query points
         qp_transformed = demo_poses.transform_points(query_points)
+        # TODO: investigate what is the effect of different query points in Task
+        # avg qp, 
+        # vs selecting one of them randomly, 
+        # vs using set of finger qp before fk, 
+        # vs use og qp & finger qp separately
+        query_points = query_points.mean(dim=0) #better, results look similar to og qp approach, with some collisions, weird orientations, good prompts help
+        # query_points = query_points[random.randint(0, n-1)] #really bad, poses are not aligned with objects
     else:
         query_points = sample_query_points(num_query_points, mean=(0.025,0.0,0.0), std_dev=qp_std_dev)
         qp_transformed = demo_poses.transform_points(query_points)
@@ -200,8 +211,8 @@ if __name__ == "__main__":
         "--scene", type=str, required=True, help="Path to Nerfstudio scene config.yml file for the f3rm training run."
     )
     parser.add_argument("--demo_fname", type=str, default="scene_demo.json", help="Name of the demo file.")
-    parser.add_argument("--num_query_points", type=int, default=100, help="Number of query points to sample.")
-    parser.add_argument("--qp_std_dev", type=float, default=0.025, help="Standard deviation of query points.")
+    parser.add_argument("--num_query_points", type=int, default=320, help="Number of query points to sample.")
+    parser.add_argument("--qp_std_dev", type=float, default=0.02, help="Standard deviation of query points.")
     parser.add_argument("--save", action="store_true", help="Save the task to disk under the task name.")
     parser.add_argument("--disable_visualize", action="store_true", help="Disable visualization of the task.")
     parser.add_argument("--viser_host", type=str, default="localhost", help="Host for Viser Visualizer.")
