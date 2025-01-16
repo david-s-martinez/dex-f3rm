@@ -6,6 +6,7 @@ import urdfpy
 from pytorch3d.transforms import Transform3d
 from collections import OrderedDict
 from urdfpy import URDF
+import pytorch_kinematics as pk
 
 def collision_trimesh_fk_lfk(robot, cfg=None, links=None):
     """Computes the poses of the URDF's collision trimeshes using fk.
@@ -168,21 +169,90 @@ wrist_T_grasp = np.array([
     [0.000,  0.000,  0.000,  1.000],
 ]) # computed using ros2 run tf2_ros tf2_echo base_link_hithand f3rm_link (grasp in wrist frame) wrist_T_grasp | grasp2wrist
 grasp_T_wrist = np.linalg.inv(wrist_T_grasp)
+asset_path = get_asset_path("hithand_palm/hithand.urdf")
+asset_path_coll = get_asset_path("hithand_palm/hithand_collision.urdf")
+robot_og = URDF.load(asset_path)
+robot_coll = URDF.load(asset_path_coll)
+f3rm_names = {link.name:i for i, link in enumerate(robot_coll.links) if "f3rm" in link.name}
+# Convert to PyTorch tensors
+wrist_T_grasp_tensor = torch.from_numpy(wrist_T_grasp).float()
+grasp_T_wrist_tensor = torch.from_numpy(grasp_T_wrist).float()
+
+# Using pytorch_kinematics (loading both for collision and visualization)
+chain_og = pk.build_chain_from_urdf(open(asset_path, mode="rb").read())
+chain_coll = pk.build_chain_from_urdf(open(asset_path_coll, mode="rb").read())
+
+def get_query_frames_fk_torch(joint, is_debug=False, is_return_tensor=True):
+    """
+    Computes forward kinematics for specified finger root links.
+
+    Args:
+        joint (torch.Tensor): Tensor of joint angles with shape (..., 20).
+        is_debug (bool): Whether to print debug information.
+        is_return_tensor (bool): Whether to return a single tensor or a dictionary of tensors.
+
+    Returns:
+        If is_return_tensor is True:
+            torch.Tensor: A tensor of transforms with shape (..., num_f3rm_links, 4, 4).
+        If is_return_tensor is False:
+            dict: A dictionary mapping finger root link names to their 4x4 transformation matrices.
+    """
+    joint = apply_joint_correction_torch(joint)
+    if joint.ndim > 1:
+        transform_list = []
+        for j in joint:
+            fk_link = chain_coll.to(device=joint.device).forward_kinematics(j)
+            transform_list.append(torch.stack([grasp_T_wrist_tensor.to(device=joint.device) @ fk_link[name].get_matrix().squeeze() for name in f3rm_names.keys()]))
+        f3rm_frames = torch.stack(transform_list)
+
+    else:
+      fk_link = chain_coll.to(device=joint.device).forward_kinematics(joint)
+
+      if is_debug:
+          print(f"names: {f3rm_names}")
+          print(fk_link)
+
+      if is_return_tensor:
+          f3rm_frames = Transform3d(matrix=torch.stack([grasp_T_wrist_tensor.to(device=joint.device) @ fk_link[name].get_matrix().squeeze() for name in f3rm_names.keys()]).float())
+      else:
+          f3rm_frames = {f"grasp_T_{name}": grasp_T_wrist_tensor.to(device=joint.device) @ fk_link[name].get_matrix().squeeze() for name in f3rm_names.keys()}
+
+    return f3rm_frames
 
 def get_query_frames_fk(joint, is_debug = False, is_return_tensor = True):
     # Reorder and apply correction
     joint = apply_joint_correction(joint)
-    asset_path = get_asset_path("hithand_palm/hithand.urdf")
-    robot = URDF.load(asset_path)
-    f3rm_names = {link.name:i for i, link in enumerate(robot.links) if "f3rm" in link.name}
     if is_debug:
         print(f"names: {f3rm_names}")
-    _, fk_link = get_robot_fk(robot, joint, False)
+    _, fk_link = get_robot_fk(robot_coll, joint, False)
     if is_return_tensor:
-        f3rm_frames = Transform3d(matrix=torch.from_numpy(np.stack([(grasp_T_wrist @ fk_link[robot.links[idx]]).T for name, idx in f3rm_names.items()])).float())
+        f3rm_frames = Transform3d(matrix=torch.from_numpy(np.stack([(grasp_T_wrist @ fk_link[robot_coll.links[idx]]).T for name, idx in f3rm_names.items()])).float())
     else:
-        f3rm_frames = {f"grasp_T_{name}": grasp_T_wrist @ fk_link[robot.links[idx]] for name, idx in f3rm_names.items()}
+        f3rm_frames = {f"grasp_T_{name}": grasp_T_wrist @ fk_link[robot_coll.links[idx]] for name, idx in f3rm_names.items()}
     return f3rm_frames
+
+def apply_joint_correction_torch(joint):
+    """
+    Reorders and applies correction to joint angles.
+
+    Args:
+        joint (torch.Tensor): Tensor of joint angles with shape (..., 5, 4).
+
+    Returns:
+        torch.Tensor: Corrected joint angles flattened to shape (..., 20).
+    """
+    finger_order = {
+        'Index': 1,
+        'Little': 4,
+        'Middle': 2,
+        'Ring': 3,
+        'Thumb': 0,
+    }
+    joint_correction = torch.tensor([[-1, 1, 1, 1]], dtype=joint.dtype, device=joint.device) # (1, 4)
+    indices = torch.tensor(list(finger_order.values()), dtype=torch.long, device=joint.device) # (5,)
+    
+    # Correct shape for proper indexing and broadcasting
+    return (joint[..., indices, :] * joint_correction).flatten(start_dim=-2)
 
 def apply_joint_correction(joint):
     # joint->(5,4) (5 fingers, 4 joints)
@@ -200,15 +270,13 @@ def apply_joint_correction(joint):
     indices = np.array(list(finger_order.values()))
     return (joint[indices, :] * joint_correction[None, :]).flatten()
 
-def get_hithand_gripper_mesh(joint = np.zeros((5,4)), is_debug = False) -> o3d.geometry.TriangleMesh:
+def get_hithand_gripper_mesh(joint = np.zeros((5,4)), is_debug = False, is_use_coll_mesh = False, robot = robot_og) -> o3d.geometry.TriangleMesh:
     # Reorder and apply correction
     joint = apply_joint_correction(joint)
-    asset_path = get_asset_path("hithand_palm/hithand.urdf")
-    robot = URDF.load(asset_path)
-    f3rm_names = {link.name:i for i, link in enumerate(robot.links) if "f3rm" in link.name}
     if is_debug:
         print(f"names: {f3rm_names}")
-
+    if is_use_coll_mesh:
+        robot = robot_coll
     fk, fk_link = get_robot_fk(robot, joint)
 
     f3rm_frames = {f"grasp_T_{name}": grasp_T_wrist @ fk_link[robot.links[idx]] for name, idx in f3rm_names.items()}

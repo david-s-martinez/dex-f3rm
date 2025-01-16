@@ -13,8 +13,8 @@ class OptimizationArgs(ParamsProto, cli_parse=False):
 
     # Initial proposals
     voxel_size: float = Proto(0.01, help="Voxel size to discretize workspace into (in meters).")
-    num_rots_per_voxel: int = Proto(8, help="Number of rotations to sample for each voxel.")
-    # num_rots_per_voxel: int = Proto(1, help="Number of rotations to sample for each voxel.")
+    # num_rots_per_voxel: int = Proto(8, help="Number of rotations to sample for each voxel.")
+    num_rots_per_voxel: int = Proto(1, help="Number of rotations to sample for each voxel.")
     alpha_threshold: float = Proto(0.1, help="Alpha threshold to use for marching cubes masking.")
     softmax_temperature: float = Proto(0.001, help="Temperature to use for softmax for language masking.")
 

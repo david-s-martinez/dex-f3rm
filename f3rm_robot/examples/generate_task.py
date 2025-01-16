@@ -86,7 +86,7 @@ def visualize_demos(
         joints = [np.zeros((5,4)) for demo in demo_joints]
 
     for label, qps, pose, joint in zip(demo_labels, demo_qps, demo_poses, joints):
-        base_gripper_mesh, f3rm_tfs = get_hithand_gripper_mesh(np.array(joint))
+        base_gripper_mesh, f3rm_tfs = get_hithand_gripper_mesh(np.array(joint), is_use_coll_mesh = True)
         base_gripper_mesh.compute_vertex_normals()
         # Transformation matrix, need to transpose Transform3d matrix as it uses row vectors
         transform = pose.get_matrix()[0].T
@@ -145,6 +145,7 @@ def generate_task(
     if is_finger_qp:
         tot_num_qp = int(num_query_points/(num_fingers * num_finger_qf + 1))
         link_points = sample_query_points(tot_num_qp, mean=(0.0,0.0,0.0), std_dev=qp_std_dev)
+        query_points_og = get_query_frames_fk(np.zeros((5,4))).transform_points(link_points)
         query_points = torch.stack([get_query_frames_fk(joint).transform_points(link_points) for joint in joints_np])
         n, j, q, d = query_points.shape
         query_points = query_points.view(n, j * q, d) # n_demo, n_joints, n_query points, dim_query points
@@ -154,7 +155,8 @@ def generate_task(
         # vs selecting one of them randomly, 
         # vs using set of finger qp before fk, 
         # vs use og qp & finger qp separately
-        query_points = query_points.mean(dim=0) #better, results look similar to og qp approach, with some collisions, weird orientations, good prompts help
+        query_points = query_points_og.view(j * q, d)
+        # query_points = query_points.mean(dim=0) #better, results look similar to og qp approach, with some collisions, weird orientations, good prompts help
         # query_points = query_points[random.randint(0, n-1)] #really bad, poses are not aligned with objects
     else:
         query_points = sample_query_points(num_query_points, mean=(0.025,0.0,0.0), std_dev=qp_std_dev)
@@ -170,6 +172,7 @@ def generate_task(
     task = Task(
         name = demo_dict["task"],
         query_points = query_points,
+        link_points = link_points,
         demo_features = outputs["feature"],
         demo_density = outputs["density"],
         demo_joints = joints_torch,
@@ -177,7 +180,7 @@ def generate_task(
     )
     print(f"Created task '{task.name}' with {task.num_demos} demos and {task.num_query_points} query points.")
     if save:
-        save_path = f"f3rm_robot/assets/hithand_tasks/{task.name}.pt"
+        save_path = f"f3rm_robot/assets/hithand_tasks_og_fk/{task.name}.pt"
         torch.save(task, save_path)
         print(f"Saved task to {save_path}")
 

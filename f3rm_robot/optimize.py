@@ -30,7 +30,7 @@ from f3rm_robot.load import LoadState, load_nerfstudio_outputs
 from f3rm_robot.task import Task, get_tasks
 from f3rm_robot.utils import get_gripper_meshes, get_hand_meshes, get_heatmap, sample_point_cloud
 from f3rm_robot.visualizer import BaseVisualizer, ViserVisualizer
-
+from f3rm_robot.assets import get_query_frames_fk, get_query_frames_fk_torch
 args = OptimizationArgs
 visualizer: Optional[BaseVisualizer] = None
 
@@ -202,7 +202,14 @@ def get_language_guidance_fn(voxel_sims: Float[torch.Tensor, "num_voxels"], quer
 
 
 def language_pose_optimization(
-    feature_field: FeatureFieldAdapter, clip_model: CLIP, query: str, device: torch.device, is_save_gripper_meshes: bool = False
+    feature_field: FeatureFieldAdapter, 
+    clip_model: CLIP, 
+    query: str, 
+    device: torch.device, 
+    is_qp_fk: bool = True ,
+    is_use_torch_fk: bool = True,
+    is_show_hand_opt: bool = False,
+    is_save_gripper_meshes: bool = False,
 ) -> Dict[str, Any]:
     """
     Optimize 6-DOF poses for the given language query. We return the ranked grasps after optimization and the metrics.
@@ -213,6 +220,7 @@ def language_pose_optimization(
     task, task_emb, query_emb = retrieve_task(query, clip_model, device)
     task_emb = task_emb.reshape(-1)  # [num_qps * num_channels]
     query_points = task.query_points.to(device)
+    link_points = task.link_points.to(device)
     print(f'Matched "{query}" to task {task.name}.')
     metrics["retrieved_task"] = task.name
 
@@ -247,8 +255,8 @@ def language_pose_optimization(
     grasps_to_world = get_grasps_to_world(translations, rotations)
     print(f'Checking initial collisions for {grasps_to_world.get_matrix().size()}')
     with torch.no_grad():
-        collision_detected = has_collision(feature_field, grasps_to_world, None)
-        # collision_detected = has_collision(feature_field, grasps_to_world, joints)
+        # collision_detected = has_collision(feature_field, grasps_to_world, None)
+        collision_detected = has_collision(feature_field, grasps_to_world, joints)
     translations = translations[~collision_detected]
     rotations = rotations[~collision_detected]
     joints = joints[~collision_detected]
@@ -275,16 +283,28 @@ def language_pose_optimization(
     for step in tqdm(range(args.num_steps), desc=f'Optimizing poses for "{query}"'):
         optimizer.zero_grad()
         all_grasps_to_world = []
+        all_joints = []
         step_losses = []
         num_proposals = len(translations)
 
         for i in range(0, num_proposals, batch_size):
             batch_translations = translations[i : i + batch_size]
             batch_rotations = rotations[i : i + batch_size]
+            batch_joints = joints[i : i + batch_size]
 
             # Transform query points by the proposals, and forward through the feature field
             grasps_to_world = get_grasps_to_world(batch_translations, batch_rotations)
             all_grasps_to_world.append(grasps_to_world)
+            # all_joints.append(batch_joints)
+            if is_qp_fk:
+                if is_use_torch_fk:
+                    query_points = torch.stack([get_query_frames_fk_torch(joint.reshape(5,4)).transform_points(link_points) for joint in batch_joints])
+                else:
+                    query_points = torch.stack([get_query_frames_fk(joint.reshape(5,4).detach().cpu().numpy()).to(device).transform_points(link_points) for joint in batch_joints])
+                # breakpoint()
+                n, j, q, d = query_points.shape
+                query_points = query_points.view(n, j * q, d) # n_demo, n_joints, n_query points, dim_query points
+
             qps = grasps_to_world.transform_points(query_points)
             outputs = feature_field(qps)
             qp_feats = get_qp_feats(outputs)
@@ -310,10 +330,15 @@ def language_pose_optimization(
             )
             all_grasps_to_world = Transform3d.stack(*all_grasps_to_world)
             best_grasps_to_world = all_grasps_to_world[best_indices]
+            # best_joints = torch.stack(all_joints)[best_indices]
             # We use jet cmap as viser lighting is a bit messed up for turbo
             heatmap = torch.from_numpy(get_heatmap(best_losses, invert=True, cmap_name="jet")).to(device)
-            for idx, (verts, faces) in enumerate(zip(*get_gripper_meshes(best_grasps_to_world))):
-                visualizer.add_mesh(f"grasps/grasp_{idx + 1}", verts, faces, heatmap[idx])
+            if is_show_hand_opt:
+                for idx, (verts, faces) in enumerate(zip(*get_hand_meshes(best_grasps_to_world))):
+                    visualizer.add_mesh(f"grasps/grasp_{idx + 1}", verts, faces, heatmap[idx])
+            else:
+                for idx, (verts, faces) in enumerate(zip(*get_gripper_meshes(best_grasps_to_world))):
+                    visualizer.add_mesh(f"grasps/grasp_{idx + 1}", verts, faces, heatmap[idx])
 
         # Prune proposals
         if args.keep_proportion < 1.0 and num_proposals > args.min_proposals and step > args.prune_after:
@@ -333,8 +358,8 @@ def language_pose_optimization(
     grasps_to_world = get_grasps_to_world(translations, rotations)
     print(f'Checking final collisions for {grasps_to_world.get_matrix().size()}')
     with torch.no_grad():
-        # collision_detected = has_collision(feature_field, grasps_to_world, joints)
-        collision_detected = has_collision(feature_field, grasps_to_world, None)
+        collision_detected = has_collision(feature_field, grasps_to_world, joints)
+        # collision_detected = has_collision(feature_field, grasps_to_world, None)
     print(f"Removed {collision_detected.sum()} of {len(grasps_to_world)} optimized proposals in collision")
     grasps_to_world = grasps_to_world[~collision_detected]
     joints = joints[~collision_detected]
@@ -352,8 +377,8 @@ def language_pose_optimization(
         best_losses = sorted_losses[: args.num_poses_to_visualize]
         best_grasps_to_world = grasps_to_world[: args.num_poses_to_visualize]
         joints = joints[: args.num_poses_to_visualize]
-        all_verts, all_faces = get_hand_meshes(best_grasps_to_world, None)
-        # all_verts, all_faces = get_hand_meshes(best_grasps_to_world, joints)
+        # all_verts, all_faces = get_hand_meshes(best_grasps_to_world, None)
+        all_verts, all_faces = get_hand_meshes(best_grasps_to_world, joints)
         # We use jet cmap as viser lighting is a bit messed up for turbo
         heatmap = torch.from_numpy(get_heatmap(best_losses, invert=True, cmap_name="jet")).to(device)
         gripper_meshes = []

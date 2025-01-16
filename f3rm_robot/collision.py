@@ -48,7 +48,7 @@ def get_gripper_points() -> torch.Tensor:
     """
     # Load mesh and convert to voxel grid
     # mesh = get_panda_gripper_mesh()
-    mesh,_ = get_hithand_gripper_mesh()
+    mesh,_ = get_hithand_gripper_mesh(is_use_coll_mesh = True)
     voxel_grid = o3d.geometry.VoxelGrid.create_from_triangle_mesh(mesh, voxel_size=CollisionArgs.voxel_size)
 
     # Get (x, y, z) coordinates of the voxels
@@ -75,7 +75,7 @@ def get_gripper_fk_points(joints) -> torch.Tensor:
     # Load mesh and convert to voxel grid
     # mesh = get_panda_gripper_mesh()
     joint_values_np = joints.detach().cpu().numpy().reshape(5,4)
-    mesh,_ = get_hithand_gripper_mesh(joint_values_np)
+    mesh,_ = get_hithand_gripper_mesh(joint_values_np, is_use_coll_mesh = True)
     voxel_grid = o3d.geometry.VoxelGrid.create_from_triangle_mesh(mesh, voxel_size=CollisionArgs.voxel_size)
 
     # Get (x, y, z) coordinates of the voxels

@@ -147,7 +147,7 @@ def get_hand_meshes(gripper_poses: Transform3d, joints: torch.tensor = None) -> 
     for each gripper pose.
     """
     if joints is None:
-        gripper_mesh, f3rm_tfs = get_hithand_gripper_mesh()
+        gripper_mesh, f3rm_tfs = get_hithand_gripper_mesh(is_use_coll_mesh = True)
         vertices = np.asarray(gripper_mesh.vertices)
         vertices = torch.from_numpy(vertices).float().to(gripper_poses.device)
         with torch.no_grad():
@@ -164,7 +164,7 @@ def get_hand_meshes(gripper_poses: Transform3d, joints: torch.tensor = None) -> 
         all_faces_torch = []
         all_vertices_torch = []
         for joint in reshaped_joints:
-            gripper_mesh, f3rm_tfs = get_hithand_gripper_mesh(joint.detach().cpu().numpy())
+            gripper_mesh, f3rm_tfs = get_hithand_gripper_mesh(joint.detach().cpu().numpy(),is_use_coll_mesh = True)
 
             vertices = np.asarray(gripper_mesh.vertices)
             vertices = torch.from_numpy(vertices).float().to(gripper_poses.device)
