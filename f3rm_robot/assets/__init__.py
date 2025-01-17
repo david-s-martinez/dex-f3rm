@@ -198,26 +198,17 @@ def get_query_frames_fk_torch(joint, is_debug=False, is_return_tensor=True):
             dict: A dictionary mapping finger root link names to their 4x4 transformation matrices.
     """
     joint = apply_joint_correction_torch(joint)
-    if joint.ndim > 1:
-        transform_list = []
-        for j in joint:
-            fk_link = chain_coll.to(device=joint.device).forward_kinematics(j)
-            transform_list.append(torch.stack([grasp_T_wrist_tensor.to(device=joint.device) @ fk_link[name].get_matrix().squeeze() for name in f3rm_names.keys()]))
-        f3rm_frames = torch.stack(transform_list)
-
+    transform_list = []
+    fk_links = chain_coll.to(device=joint.device).forward_kinematics(joint)
+    transform_dict= {name:torch.transpose(grasp_T_wrist_tensor.to(joint.device) @ fk_links[name].get_matrix(), 1, 2) for name in f3rm_names.keys()}
+    if is_debug:
+        print(f"names: {transform_dict.keys()}")
+    transform_list = torch.stack(list(transform_dict.values())).float()
+    f3rm_frames = torch.transpose(transform_list, 0, 1)
+    if is_return_tensor:
+        return f3rm_frames
     else:
-      fk_link = chain_coll.to(device=joint.device).forward_kinematics(joint)
-
-      if is_debug:
-          print(f"names: {f3rm_names}")
-          print(fk_link)
-
-      if is_return_tensor:
-          f3rm_frames = Transform3d(matrix=torch.stack([grasp_T_wrist_tensor.to(device=joint.device) @ fk_link[name].get_matrix().squeeze() for name in f3rm_names.keys()]).float())
-      else:
-          f3rm_frames = {f"grasp_T_{name}": grasp_T_wrist_tensor.to(device=joint.device) @ fk_link[name].get_matrix().squeeze() for name in f3rm_names.keys()}
-
-    return f3rm_frames
+        return transform_dict
 
 def get_query_frames_fk(joint, is_debug = False, is_return_tensor = True):
     # Reorder and apply correction

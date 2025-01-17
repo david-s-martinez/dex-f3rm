@@ -3,6 +3,7 @@ from datetime import datetime
 from functools import reduce
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
+import copy
 
 import open3d as o3d
 import torch
@@ -208,7 +209,7 @@ def language_pose_optimization(
     device: torch.device, 
     is_qp_fk: bool = True ,
     is_use_torch_fk: bool = True,
-    is_show_hand_opt: bool = False,
+    is_show_hand_opt: bool = True,
     is_save_gripper_meshes: bool = False,
 ) -> Dict[str, Any]:
     """
@@ -255,8 +256,8 @@ def language_pose_optimization(
     grasps_to_world = get_grasps_to_world(translations, rotations)
     print(f'Checking initial collisions for {grasps_to_world.get_matrix().size()}')
     with torch.no_grad():
-        # collision_detected = has_collision(feature_field, grasps_to_world, None)
-        collision_detected = has_collision(feature_field, grasps_to_world, joints)
+        collision_detected = has_collision(feature_field, grasps_to_world, None)
+        # collision_detected = has_collision(feature_field, grasps_to_world, joints)
     translations = translations[~collision_detected]
     rotations = rotations[~collision_detected]
     joints = joints[~collision_detected]
@@ -294,16 +295,19 @@ def language_pose_optimization(
 
             # Transform query points by the proposals, and forward through the feature field
             grasps_to_world = get_grasps_to_world(batch_translations, batch_rotations)
+
             all_grasps_to_world.append(grasps_to_world)
-            # all_joints.append(batch_joints)
-            if is_qp_fk:
-                if is_use_torch_fk:
-                    query_points = torch.stack([get_query_frames_fk_torch(joint.reshape(5,4)).transform_points(link_points) for joint in batch_joints])
-                else:
-                    query_points = torch.stack([get_query_frames_fk(joint.reshape(5,4).detach().cpu().numpy()).to(device).transform_points(link_points) for joint in batch_joints])
-                # breakpoint()
-                n, j, q, d = query_points.shape
-                query_points = query_points.view(n, j * q, d) # n_demo, n_joints, n_query points, dim_query points
+            all_joints.append(batch_joints)
+
+            if is_use_torch_fk and is_qp_fk:
+                f3rm_fk_tf = get_query_frames_fk_torch(batch_joints.reshape(-1,5,4))
+                b, j, c, r = f3rm_fk_tf.shape # batch_size, n_joints, tf_column, tf_row
+                f3rm_frames = Transform3d(matrix=f3rm_fk_tf.reshape(b * j, c, r))
+                query_points = f3rm_frames.transform_points(link_points).reshape(b, j * link_points.shape[0], link_points.shape[1])
+            elif is_qp_fk:
+                query_points = torch.stack([get_query_frames_fk(joint.reshape(5,4).detach().cpu().numpy()).to(device).transform_points(link_points) for joint in batch_joints])
+                b, j, q, d = query_points.shape
+                query_points = query_points.view(b, j * q, d) # batch_size, n_joints, n_query points, dim_query points
 
             qps = grasps_to_world.transform_points(query_points)
             outputs = feature_field(qps)
@@ -330,11 +334,13 @@ def language_pose_optimization(
             )
             all_grasps_to_world = Transform3d.stack(*all_grasps_to_world)
             best_grasps_to_world = all_grasps_to_world[best_indices]
-            # best_joints = torch.stack(all_joints)[best_indices]
+            best_joints = torch.stack(all_joints).squeeze()[best_indices]
             # We use jet cmap as viser lighting is a bit messed up for turbo
             heatmap = torch.from_numpy(get_heatmap(best_losses, invert=True, cmap_name="jet")).to(device)
             if is_show_hand_opt:
-                for idx, (verts, faces) in enumerate(zip(*get_hand_meshes(best_grasps_to_world))):
+                # all_verts, all_faces = get_hand_meshes(best_grasps_to_world, best_joints)
+                all_verts, all_faces = get_hand_meshes(best_grasps_to_world, None)
+                for idx, (verts, faces) in enumerate(zip(all_verts, all_faces)):
                     visualizer.add_mesh(f"grasps/grasp_{idx + 1}", verts, faces, heatmap[idx])
             else:
                 for idx, (verts, faces) in enumerate(zip(*get_gripper_meshes(best_grasps_to_world))):
