@@ -182,7 +182,7 @@ grasp_T_wrist_tensor = torch.from_numpy(grasp_T_wrist).float()
 chain_og = pk.build_chain_from_urdf(open(asset_path, mode="rb").read())
 chain_coll = pk.build_chain_from_urdf(open(asset_path_coll, mode="rb").read())
 
-def get_query_frames_fk_torch(joint, is_debug=False, is_return_tensor=True):
+def get_query_frames_fk_torch(joint, is_debug=False, is_return_tensor=True, is_joint_correction = False):
     """
     Computes forward kinematics for specified finger root links.
 
@@ -197,7 +197,11 @@ def get_query_frames_fk_torch(joint, is_debug=False, is_return_tensor=True):
         If is_return_tensor is False:
             dict: A dictionary mapping finger root link names to their 4x4 transformation matrices.
     """
-    joint = apply_joint_correction_torch(joint)
+    if is_joint_correction:
+        joint = apply_joint_correction_torch(joint)
+    else:
+        joint = joint.flatten(start_dim=-2)
+    
     transform_list = []
     fk_links = chain_coll.to(device=joint.device).forward_kinematics(joint)
     transform_dict= {name:torch.transpose(grasp_T_wrist_tensor.to(joint.device) @ fk_links[name].get_matrix(), 1, 2) for name in f3rm_names.keys()}
@@ -210,9 +214,13 @@ def get_query_frames_fk_torch(joint, is_debug=False, is_return_tensor=True):
     else:
         return transform_dict
 
-def get_query_frames_fk(joint, is_debug = False, is_return_tensor = True):
+def get_query_frames_fk(joint, is_debug = False, is_return_tensor = True, is_joint_correction = False):
     # Reorder and apply correction
-    joint = apply_joint_correction(joint)
+    if is_joint_correction:
+        joint = apply_joint_correction(joint)
+    else:
+        joint = joint.flatten()
+
     if is_debug:
         print(f"names: {f3rm_names}")
     _, fk_link = get_robot_fk(robot_coll, joint, False)
@@ -261,9 +269,12 @@ def apply_joint_correction(joint):
     indices = np.array(list(finger_order.values()))
     return (joint[indices, :] * joint_correction[None, :]).flatten()
 
-def get_hithand_gripper_mesh(joint = np.zeros((5,4)), is_debug = False, is_use_coll_mesh = False, robot = robot_og) -> o3d.geometry.TriangleMesh:
+def get_hithand_gripper_mesh(joint = np.zeros((5,4)), is_debug = False, is_use_coll_mesh = False, is_joint_correction = False, robot = robot_og) -> o3d.geometry.TriangleMesh:
     # Reorder and apply correction
-    joint = apply_joint_correction(joint)
+    if is_joint_correction:
+        joint = apply_joint_correction(joint)
+    else:
+        joint = joint.flatten()
     if is_debug:
         print(f"names: {f3rm_names}")
     if is_use_coll_mesh:

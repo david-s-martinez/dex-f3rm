@@ -201,6 +201,9 @@ def get_language_guidance_fn(voxel_sims: Float[torch.Tensor, "num_voxels"], quer
 
     return language_guidance
 
+def get_preshape(task, repeat, device):
+    task_joints = task.demo_joints.to(device)[0]
+    return task_joints.repeat(repeat, 1)
 
 def language_pose_optimization(
     feature_field: FeatureFieldAdapter, 
@@ -233,8 +236,11 @@ def language_pose_optimization(
     translations = voxel_grid.repeat_interleave(args.num_rots_per_voxel, dim=0)
     rotations = random_quaternions(len(translations), device=device)
     # TODO: try use selected demo joint values / preshape to initialize.
-    joints = torch.rand(len(translations), 20, device = device)
-    joints[:, ::4] = 0
+    joints = torch.rand(len(translations), 20, device = device)*0.7
+    # joints[:, ::4] = 0
+    joint_preshape = get_preshape(task, len(translations), device)
+    joints[:, ::4] = joint_preshape[:, ::4]
+
     # joints = torch.zeros(len(translations), 20, device = device)
     rot_scale = 0.1
     rotations = rotations * rot_scale
@@ -289,6 +295,9 @@ def language_pose_optimization(
         num_proposals = len(translations)
 
         for i in range(0, num_proposals, batch_size):
+            with torch.no_grad():
+                joint_preshape = get_preshape(task, len(joints), device)
+                joints[:, ::4] = joint_preshape[:, ::4]
             batch_translations = translations[i : i + batch_size]
             batch_rotations = rotations[i : i + batch_size]
             batch_joints = joints[i : i + batch_size]
@@ -338,8 +347,8 @@ def language_pose_optimization(
             # We use jet cmap as viser lighting is a bit messed up for turbo
             heatmap = torch.from_numpy(get_heatmap(best_losses, invert=True, cmap_name="jet")).to(device)
             if is_show_hand_opt:
-                # all_verts, all_faces = get_hand_meshes(best_grasps_to_world, best_joints)
-                all_verts, all_faces = get_hand_meshes(best_grasps_to_world, None)
+                all_verts, all_faces = get_hand_meshes(best_grasps_to_world, best_joints)
+                # all_verts, all_faces = get_hand_meshes(best_grasps_to_world, None)
                 for idx, (verts, faces) in enumerate(zip(all_verts, all_faces)):
                     visualizer.add_mesh(f"grasps/grasp_{idx + 1}", verts, faces, heatmap[idx])
             else:

@@ -24,7 +24,7 @@ from jaxtyping import Float
 from pytorch3d.transforms import Transform3d
 from scipy.spatial.transform import Rotation
 
-from f3rm_robot.assets import get_panda_gripper_mesh, get_hithand_gripper_mesh, get_query_frames_fk
+from f3rm_robot.assets import get_panda_gripper_mesh, get_hithand_gripper_mesh, get_query_frames_fk, apply_joint_correction_torch
 from f3rm_robot.load import LoadState, load_nerfstudio_outputs
 from f3rm_robot.task import Task, sample_query_points
 from f3rm_robot.visualizer import BaseVisualizer, ViserVisualizer
@@ -140,8 +140,10 @@ def generate_task(
     # query points, so you might want to try multiple different samples.
 
     joints_torch = joints_torch.to(device)
+    joints_torch = apply_joint_correction_torch(joints_torch)
     torques_torch = torques_torch.to(device)
     joints_np = joints_torch.detach().cpu().numpy().reshape(-1,5,4)
+
     if is_finger_qp:
         tot_num_qp = int(num_query_points/(num_fingers * num_finger_qf + 1))
         link_points = sample_query_points(tot_num_qp, mean=(0.0,0.0,0.0), std_dev=qp_std_dev)
@@ -215,7 +217,8 @@ if __name__ == "__main__":
     )
     parser.add_argument("--demo_fname", type=str, default="scene_demo.json", help="Name of the demo file.")
     parser.add_argument("--num_query_points", type=int, default=320, help="Number of query points to sample.")
-    parser.add_argument("--qp_std_dev", type=float, default=0.02, help="Standard deviation of query points.")
+    parser.add_argument("--qp_std_dev", type=float, default=0.004, help="Standard deviation of query points.")
+    # parser.add_argument("--qp_std_dev", type=float, default=0.02, help="Standard deviation of query points.")
     parser.add_argument("--save", action="store_true", help="Save the task to disk under the task name.")
     parser.add_argument("--disable_visualize", action="store_true", help="Disable visualization of the task.")
     parser.add_argument("--viser_host", type=str, default="localhost", help="Host for Viser Visualizer.")
