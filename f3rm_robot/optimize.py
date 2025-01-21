@@ -236,12 +236,20 @@ def language_pose_optimization(
     translations = voxel_grid.repeat_interleave(args.num_rots_per_voxel, dim=0)
     rotations = random_quaternions(len(translations), device=device)
     # TODO: try use selected demo joint values / preshape to initialize.
-    joints = torch.rand(len(translations), 20, device = device)*0.7
+    # joints = torch.zeros(len(translations), 20, device = device)
+
+    # joints = torch.rand(len(translations), 20, device = device)*0.8
+    # joint_preshape = get_preshape(task, len(translations), device)
+    # joints[:, ::4] = joint_preshape[:, ::4]
     # joints[:, ::4] = 0
+    
+    min_rad = -0.05
+    max_rad = 0.05
+    joints_init = (min_rad + max_rad) * torch.rand(len(translations), 20, device = device) + max_rad
     joint_preshape = get_preshape(task, len(translations), device)
+    joints = joints_init + joint_preshape
     joints[:, ::4] = joint_preshape[:, ::4]
 
-    # joints = torch.zeros(len(translations), 20, device = device)
     rot_scale = 0.1
     rotations = rotations * rot_scale
     metrics["num_proposals"] = {"initial": len(translations)}
@@ -343,7 +351,7 @@ def language_pose_optimization(
             )
             all_grasps_to_world = Transform3d.stack(*all_grasps_to_world)
             best_grasps_to_world = all_grasps_to_world[best_indices]
-            best_joints = torch.stack(all_joints).squeeze()[best_indices]
+            best_joints = torch.cat(all_joints).squeeze()[best_indices]
             # We use jet cmap as viser lighting is a bit messed up for turbo
             heatmap = torch.from_numpy(get_heatmap(best_losses, invert=True, cmap_name="jet")).to(device)
             if is_show_hand_opt:
