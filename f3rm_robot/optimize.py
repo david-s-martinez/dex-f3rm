@@ -201,19 +201,30 @@ def get_language_guidance_fn(voxel_sims: Float[torch.Tensor, "num_voxels"], quer
 
     return language_guidance
 
-def get_preshape(task, repeat, device):
+def get_preshape(task, repeat, device, num_links, num_fingers):
     task_joints = task.demo_joints.to(device)[0]
+    if num_links * num_fingers == 15:
+        task_joints = task_joints.reshape(5,4)[:,:3].flatten()
     return task_joints.repeat(repeat, 1)
 
-def get_complete_joints(base_joints, top_joints):
-    return torch.cat([base_joints.reshape(-1,5,1), top_joints.reshape(-1,5,3)],dim=2).reshape(-1,20)
+def get_complete_joints(base_joints, top_joints, num_links, num_fingers):
+    base_joints_reshape = base_joints.reshape(-1,num_fingers,1)
+    top_joints_reshape = top_joints.reshape(-1,num_fingers,num_links-1)
+    if num_links * num_fingers == 15:
+        last_joints = top_joints_reshape[:,:,-1].unsqueeze(dim=2)
+        complete_joints = torch.cat([base_joints_reshape, top_joints_reshape, last_joints],dim=2)
+    else:
+        complete_joints = torch.cat([base_joints_reshape, top_joints_reshape],dim=2)
+    return complete_joints.reshape(-1,4*num_fingers)
 
 def language_pose_optimization(
     feature_field: FeatureFieldAdapter, 
     clip_model: CLIP, 
     query: str, 
-    device: torch.device, 
-    is_qp_fk: bool = True ,
+    device: torch.device,
+    num_links: int = 4,
+    num_fingers: int = 5,
+    is_qp_fk: bool = True,
     is_init_coll_joint_check : bool = False,
     is_zero_init: bool = False,
     is_show_hand_opt: bool = True,
@@ -242,25 +253,25 @@ def language_pose_optimization(
     rotations = random_quaternions(len(translations), device=device)
 
     # use selected demo joint values / preshape to initialize.
-    joint_preshape = get_preshape(task, len(translations), device)
+    joint_demo = get_preshape(task, len(translations), device, num_links, num_fingers)
     if is_zero_init:
-        joints_pre = torch.zeros(len(translations), 20, device = device)
+        joints_pre = torch.zeros(len(translations), num_links*num_fingers, device = device)
     else:
-        min_rad = -0.05
-        max_rad = 0.05
-        joints_init = torch.FloatTensor(len(translations), 20).uniform_(min_rad, max_rad).to(device = device)
-        joints_pre = joint_preshape + joints_init
-        # joints_pre = torch.rand(len(translations), 20, device = device)*0.8
+        min_rad = -0.2
+        max_rad = 0.1
+        joints_init = torch.FloatTensor(len(translations), num_links*num_fingers).uniform_(min_rad, max_rad).to(device = device)
+        joints_pre = joint_demo + joints_init
+        # joints_pre = torch.rand(len(translations), num_links*num_fingers, device = device)*0.8
 
-    joints_pre[:, ::4] = joint_preshape[:, ::4]
-    # joints_pre[:, ::4] = 0
+    joints_pre[:, ::num_links] = joint_demo[:, ::num_links]
+    # joints_pre[:, ::num_links] = 0
     
     if is_optim_less_joints:
-        joints = joints_pre.reshape(-1, 5, 4)[:,:,1:].reshape(-1, 15)
-        base_joints = joints_pre.reshape(-1, 5, 4)[:,:,0]
+        joints = joints_pre.reshape(-1, num_fingers, num_links)[:,:,1:].reshape(-1, (num_links*num_fingers) - num_fingers)
+        base_joints = joints_pre.reshape(-1, num_fingers, num_links)[:,:,0]
     else:
         joints = joints_pre
-
+    joints = torch.clamp(joints, 0.0, 1.57)
     rot_scale = 0.1
     rotations = rotations * rot_scale
     metrics["num_proposals"] = {"initial": len(translations)}
@@ -283,7 +294,7 @@ def language_pose_optimization(
     with torch.no_grad():
         if is_init_coll_joint_check:
             if is_optim_less_joints:
-                joints_complete = get_complete_joints(base_joints, joints)
+                joints_complete = get_complete_joints(base_joints, joints, num_links, num_fingers)
                 collision_detected = has_collision(feature_field, grasps_to_world, joints_complete)
             else:
                 collision_detected = has_collision(feature_field, grasps_to_world, joints)
@@ -330,8 +341,8 @@ def language_pose_optimization(
                 batch_base_joints = base_joints[i : i + batch_size]
             else:
                 with torch.no_grad():
-                    joint_preshape = get_preshape(task, len(joints), device)
-                    joints[:, ::4] = joint_preshape[:, ::4]
+                    joint_demo = get_preshape(task, len(joints), device)
+                    joints[:, ::num_links] = joint_demo[:, ::num_links]
             batch_translations = translations[i : i + batch_size]
             batch_rotations = rotations[i : i + batch_size]
             batch_joints = joints[i : i + batch_size]
@@ -342,16 +353,16 @@ def language_pose_optimization(
             all_grasps_to_world.append(grasps_to_world)
 
             if is_optim_less_joints:
-                batch_joints_complete = get_complete_joints(batch_base_joints, batch_joints)
+                batch_joints_complete = get_complete_joints(batch_base_joints, batch_joints, num_links, num_fingers)
                 all_joints.append(batch_joints_complete)
             else:
                 all_joints.append(batch_joints)
 
             if is_qp_fk and is_optim_less_joints:
-                batch_joints_complete = get_complete_joints(batch_base_joints, batch_joints)
-                f3rm_fk_tf = get_query_frames_fk_torch(batch_joints_complete.reshape(-1,5,4))
+                batch_joints_complete = get_complete_joints(batch_base_joints, batch_joints, num_links, num_fingers)
+                f3rm_fk_tf = get_query_frames_fk_torch(batch_joints_complete.reshape(-1,num_fingers,4))
             elif is_qp_fk:
-                f3rm_fk_tf = get_query_frames_fk_torch(batch_joints.reshape(-1,5,4))
+                f3rm_fk_tf = get_query_frames_fk_torch(batch_joints.reshape(-1,num_fingers,4))
             b, j, c, r = f3rm_fk_tf.shape # batch_size, n_joints, tf_column, tf_row
             f3rm_frames = Transform3d(matrix=f3rm_fk_tf.reshape(b * j, c, r))
             query_points = f3rm_frames.transform_points(link_points).reshape(b, j * link_points.shape[0], link_points.shape[1])
@@ -370,6 +381,8 @@ def language_pose_optimization(
 
         # Optimizer step
         optimizer.step()
+        with torch.no_grad():
+            joints.copy_(torch.clamp(joints, 0, 1.57))
         step_losses = torch.cat(step_losses)
 
         # Visualize top poses. Note this does not take into account collisions.
@@ -414,7 +427,7 @@ def language_pose_optimization(
     print(f'Checking final collisions for {grasps_to_world.get_matrix().size()}')
     with torch.no_grad():
         if is_optim_less_joints:
-            joints = get_complete_joints(base_joints, joints)
+            joints = get_complete_joints(base_joints, joints, num_links, num_fingers)
             collision_detected = has_collision(feature_field, grasps_to_world, joints)
         else:
             collision_detected = has_collision(feature_field, grasps_to_world, joints)

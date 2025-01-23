@@ -269,7 +269,7 @@ def apply_joint_correction(joint):
     indices = np.array(list(finger_order.values()))
     return (joint[indices, :] * joint_correction[None, :]).flatten()
 
-def get_hithand_gripper_mesh(joint = np.zeros((5,4)), is_debug = False, is_use_coll_mesh = False, is_joint_correction = False, robot = robot_og) -> o3d.geometry.TriangleMesh:
+def get_hithand_gripper_mesh(joint = np.zeros((5,4)), is_debug = False, is_use_coll_mesh = False, is_joint_correction = False, is_get_tf_dict = False, robot = robot_og) -> o3d.geometry.TriangleMesh:
     # Reorder and apply correction
     if is_joint_correction:
         joint = apply_joint_correction(joint)
@@ -280,8 +280,9 @@ def get_hithand_gripper_mesh(joint = np.zeros((5,4)), is_debug = False, is_use_c
     if is_use_coll_mesh:
         robot = robot_coll
     fk, fk_link = get_robot_fk(robot, joint)
-
-    f3rm_frames = {f"grasp_T_{name}": grasp_T_wrist @ fk_link[robot.links[idx]] for name, idx in f3rm_names.items()}
+    f3rm_frames = None
+    if is_get_tf_dict:
+        f3rm_frames = {f"grasp_T_{name}": grasp_T_wrist @ fk_link[robot.links[idx]] for name, idx in f3rm_names.items()}
 
     mesh_robot_total = o3d.geometry.TriangleMesh()
     for tm in fk:

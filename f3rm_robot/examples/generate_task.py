@@ -86,7 +86,7 @@ def visualize_demos(
         joints = [np.zeros((5,4)) for demo in demo_joints]
 
     for label, qps, pose, joint in zip(demo_labels, demo_qps, demo_poses, joints):
-        base_gripper_mesh, f3rm_tfs = get_hithand_gripper_mesh(np.array(joint), is_use_coll_mesh = True)
+        base_gripper_mesh, f3rm_tfs = get_hithand_gripper_mesh(np.array(joint), is_use_coll_mesh = True, is_get_tf_dict = True)
         base_gripper_mesh.compute_vertex_normals()
         # Transformation matrix, need to transpose Transform3d matrix as it uses row vectors
         transform = pose.get_matrix()[0].T
