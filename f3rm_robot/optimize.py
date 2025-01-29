@@ -240,7 +240,13 @@ def language_pose_optimization(
     task, task_emb, query_emb = retrieve_task(query, clip_model, device)
     task_emb = task_emb.reshape(-1)  # [num_qps * num_channels]
     query_points = task.query_points.to(device)
-    link_points = task.link_points.to(device)
+    if task.link_points is None:
+        is_qp_fk = False
+        is_zero_init = True
+        is_init_coll_joint_check = False
+        args.num_steps = 200
+    else:
+        link_points = task.link_points.to(device)
     print(f'Matched "{query}" to task {task.name}.')
     metrics["retrieved_task"] = task.name
 
@@ -363,9 +369,10 @@ def language_pose_optimization(
                 f3rm_fk_tf = get_query_frames_fk_torch(batch_joints_complete.reshape(-1,num_fingers,4))
             elif is_qp_fk:
                 f3rm_fk_tf = get_query_frames_fk_torch(batch_joints.reshape(-1,num_fingers,4))
-            b, j, c, r = f3rm_fk_tf.shape # batch_size, n_joints, tf_column, tf_row
-            f3rm_frames = Transform3d(matrix=f3rm_fk_tf.reshape(b * j, c, r))
-            query_points = f3rm_frames.transform_points(link_points).reshape(b, j * link_points.shape[0], link_points.shape[1])
+            if is_qp_fk:
+                b, j, c, r = f3rm_fk_tf.shape # batch_size, n_joints, tf_column, tf_row
+                f3rm_frames = Transform3d(matrix=f3rm_fk_tf.reshape(b * j, c, r))
+                query_points = f3rm_frames.transform_points(link_points).reshape(b, j * link_points.shape[0], link_points.shape[1])
 
             qps = grasps_to_world.transform_points(query_points)
             outputs = feature_field(qps)

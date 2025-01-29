@@ -161,7 +161,8 @@ def generate_task(
         # query_points = query_points.mean(dim=0) #better, results look similar to og qp approach, with some collisions, weird orientations, good prompts help
         # query_points = query_points[random.randint(0, n-1)] #really bad, poses are not aligned with objects
     else:
-        query_points = sample_query_points(num_query_points, mean=(0.025,0.0,0.0), std_dev=qp_std_dev)
+        query_points = sample_query_points(100, mean=(0.025,0.0,0.0), std_dev=0.025)
+        link_points = None
         qp_transformed = demo_poses.transform_points(query_points)
     qp_transformed = qp_transformed.to(device)
 
@@ -182,7 +183,10 @@ def generate_task(
     )
     print(f"Created task '{task.name}' with {task.num_demos} demos and {task.num_query_points} query points.")
     if save:
-        save_path = f"f3rm_robot/assets/hithand_tasks_og_fk/{task.name}.pt"
+        if is_finger_qp:
+            save_path = f"f3rm_robot/assets/hithand_tasks_og_fk/{task.name}.pt"
+        else:
+            save_path = f"f3rm_robot/assets/hithand_tasks_avg_fk/{task.name}.pt"
         torch.save(task, save_path)
         print(f"Saved task to {save_path}")
 

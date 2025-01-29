@@ -70,6 +70,7 @@ def get_tasks() -> List[Task]:
     # task_names = ["beige_bowl","black_headphones","gray_sweep","mentos","rubiks_cube","white_mug_body","black_foam_cube","crackers_box","laying_teddy_bear","peach","teddy_bear"]
     task_names = ["laying_teddy_bear", "beige_bowl", "black_headphones", "mentos", "black_foam_cube"] # better currently
     # task_paths = [get_asset_path(f"hithand_tasks/{task_name}.pt") for task_name in task_names]
+    # task_paths = [get_asset_path(f"hithand_tasks_avg_fk/{task_name}.pt") for task_name in task_names]
     task_paths = [get_asset_path(f"hithand_tasks_og_fk/{task_name}.pt") for task_name in task_names]
     tasks = [torch.load(task_path) for task_path in task_paths]
     return tasks
