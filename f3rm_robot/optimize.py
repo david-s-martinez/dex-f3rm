@@ -240,7 +240,13 @@ def language_pose_optimization(
     task, task_emb, query_emb = retrieve_task(query, clip_model, device)
     task_emb = task_emb.reshape(-1)  # [num_qps * num_channels]
     query_points = task.query_points.to(device)
-    if task.link_points is None:
+
+    if hasattr(task, 'link_points'):
+        is_og_f3rm = task.link_points is None
+    else:
+        is_og_f3rm = True
+
+    if is_og_f3rm:
         is_qp_fk = False
         is_zero_init = True
         is_init_coll_joint_check = False
@@ -259,7 +265,11 @@ def language_pose_optimization(
     rotations = random_quaternions(len(translations), device=device)
 
     # use selected demo joint values / preshape to initialize.
-    joint_demo = get_preshape(task, len(translations), device, num_links, num_fingers)
+    if is_og_f3rm:
+        joint_demo = torch.zeros(len(translations), num_links*num_fingers, device = device)
+    else:
+        joint_demo = get_preshape(task, len(translations), device, num_links, num_fingers)
+    
     if is_zero_init:
         joints_pre = torch.zeros(len(translations), num_links*num_fingers, device = device)
     else:

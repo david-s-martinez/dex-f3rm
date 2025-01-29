@@ -186,7 +186,7 @@ def generate_task(
         if is_finger_qp:
             save_path = f"f3rm_robot/assets/hithand_tasks_og_fk/{task.name}.pt"
         else:
-            save_path = f"f3rm_robot/assets/hithand_tasks_avg_fk/{task.name}.pt"
+            save_path = f"f3rm_robot/assets/hithand_tasks_og/{task.name}.pt"
         torch.save(task, save_path)
         print(f"Saved task to {save_path}")
 
