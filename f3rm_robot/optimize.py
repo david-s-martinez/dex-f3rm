@@ -4,7 +4,7 @@ from functools import reduce
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 import copy
-
+import os
 import open3d as o3d
 import torch
 from jaxtyping import Float
@@ -32,6 +32,7 @@ from f3rm_robot.task import Task, get_tasks
 from f3rm_robot.utils import get_gripper_meshes, get_hand_meshes, get_heatmap, sample_point_cloud
 from f3rm_robot.visualizer import BaseVisualizer, ViserVisualizer
 from f3rm_robot.assets import get_query_frames_fk, get_query_frames_fk_torch
+from f3rm_robot.benchmark_data import main as benchmark_main
 args = OptimizationArgs
 visualizer: Optional[BaseVisualizer] = None
 
@@ -491,7 +492,7 @@ def entrypoint():
     ARGS.parse_args()
     print(ARGS.groups.keys())
     validate_args()
-
+    is_benchmark = any(name in args.scene for name in args.benchmarks)
     # Load feature field
     print(f"Loading feature field from {args.scene}...")
     load_state = load_nerfstudio_outputs(args.scene)
@@ -526,10 +527,29 @@ def entrypoint():
         enable_gui = lambda: None
 
     queries = []
-    while True:
-        enable_gui()
+    benchmark_data = {"prompts":["",]}
+    if is_benchmark:
+        # Input path
+        input_path = Path(args.scene)
+
+        # Construct the new path
+        benchmark_data_path = Path(args.benchmark_path) / input_path.parts[1] / "scene_benchmark_data.json"
+
+        with open(benchmark_data_path) as f:
+            benchmark_data = json.load(f)
+            print(benchmark_data)
+        scene_name = benchmark_data["scene_path"].split("/")[1]
+
+    while True and benchmark_data["prompts"]:
+        if not is_benchmark:
+            enable_gui()
         try:
-            query = input_fn().strip()
+            if is_benchmark:
+                query = benchmark_data["prompts"].pop().replace("_"," ")
+                obj_name = benchmark_data["object_ids"].pop()
+                
+            else:
+                query = input_fn().strip()
         except KeyboardInterrupt:
             print()
             break
@@ -559,7 +579,9 @@ def entrypoint():
         # Write queries to file. Save inside loop so we get partial results if we crash
         with open(output_dir / "queries.json", "w") as f:
             json.dump(queries, f, indent=4)
-
+        
+        if is_benchmark:
+            benchmark_main(prompt = query.replace(" ","-"), obj_name = obj_name, scene_name = scene_name, model_name = args.model_name)
     print(f"Results saved to {output_dir}")
     print("Exiting...")
 

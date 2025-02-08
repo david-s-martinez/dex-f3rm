@@ -10,7 +10,9 @@ class OptimizationArgs(ParamsProto, cli_parse=False):
     """
 
     scene: str = Proto(help="Path to Nerfstudio scene config.yml file for the f3rm training run.")
-
+    benchmarks: list = Proto([f"img_ycb_scene_{i}" for i in range(6)], help="Benchmark scenes.")
+    model_name: str = Proto("dex-f3rm", help="Benchmark scenes")
+    benchmark_path: str = Proto("datasets/eyeinhand_nerf1", help="Benchmark scenes")
     # Initial proposals
     voxel_size: float = Proto(0.01, help="Voxel size to discretize workspace into (in meters).")
     # num_rots_per_voxel: int = Proto(8, help="Number of rotations to sample for each voxel.")
@@ -51,6 +53,7 @@ _args = OptimizationArgs
 def validate_args():
     assert _args.scene, "Must specify scene config file using --scene."
     assert os.path.exists(_args.scene), f"--scene config file {_args.scene} does not exist"
+    
     # Initial proposals
     assert 0 < _args.voxel_size < 0.1, f"--voxel_size should be between 0 and 0.1"
     assert _args.num_rots_per_voxel > 0, "--num_rots_per_voxel must be positive"
