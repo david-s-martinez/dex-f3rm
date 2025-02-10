@@ -500,7 +500,8 @@ def entrypoint():
     feature_field = load_state.feature_field_adapter()
 
     # Setup output directory and save args
-    output_dir = Path(args.scene).parent / "language_pose_optimization" / datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    time_stamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    output_dir = Path(args.scene).parent / "language_pose_optimization" / time_stamp
     output_dir.mkdir(parents=True)
     with open(output_dir / "args.json", "w") as f:
         json.dump(vars(args), f, indent=4)
@@ -558,7 +559,7 @@ def entrypoint():
 
         # Optimize for the query!
         try:
-            results = language_pose_optimization(feature_field, clip_model, query, device)
+            results = language_pose_optimization(feature_field, clip_model, query, device, is_show_hand_opt=not is_benchmark)
         except NoProposalsError as e:
             # Print error message
             print(e)
@@ -581,7 +582,12 @@ def entrypoint():
             json.dump(queries, f, indent=4)
         
         if is_benchmark:
-            benchmark_main(prompt = query.replace(" ","-"), obj_name = obj_name, scene_name = scene_name, model_name = args.model_name)
+            benchmark_main(
+                obj_name = obj_name, 
+                prompt = query.replace(" ","-"), 
+                scene_name = scene_name, 
+                model_name = args.model_name
+            )
     print(f"Results saved to {output_dir}")
     print("Exiting...")
 

@@ -6,36 +6,15 @@ import open3d as o3d
 import torch
 from jaxtyping import Bool, Float
 from nerfstudio.fields.base_field import Field
-from params_proto import PrefixProto, Proto
-from pytorch3d.transforms import Transform3d
 
+from pytorch3d.transforms import Transform3d
+from f3rm_robot.args import CollisionArgs
 from f3rm_robot.assets import get_panda_gripper_mesh, get_hithand_gripper_mesh
 from f3rm_robot.field_adapter import (
     FeatureFieldAdapter,
     get_alpha,
     ray_samples_from_coords,
 )
-
-
-class CollisionArgs(PrefixProto, cli_parse=False):
-    """Arguments for collision checking a proposed grasp. The default values work well for the default Panda gripper."""
-
-    alpha_threshold: float = Proto(0.2, help="Alpha threshold for a point to be considered to be occupied.")
-    voxel_size: float = Proto(
-        0.0075,
-        help="Voxel size to voxelize the Panda gripper. You may need to adjust alpha if you change this.",
-    )
-    overlap_num: int = Proto(10, help="Number of overlapping points to be considered a collision.")
-
-    allow_finger_collisions: bool = Proto(
-        False,
-        help="Whether to allow collisions between the fingers, and hence use the gripper model without the fingers.",
-    )
-    ray_samples_per_batch: int = Proto(
-        2**22,
-        help="Number of ray samples to use per batch for collision checking, decrease if running out of memory.",
-    )
-
 
 @lru_cache(maxsize=1)
 def get_gripper_points() -> torch.Tensor:

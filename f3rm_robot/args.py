@@ -1,8 +1,7 @@
 import os
 from typing import Tuple
 
-from params_proto import ParamsProto, Proto
-
+from params_proto import ParamsProto, PrefixProto, Proto
 
 class OptimizationArgs(ParamsProto, cli_parse=False):
     """
@@ -11,7 +10,7 @@ class OptimizationArgs(ParamsProto, cli_parse=False):
 
     scene: str = Proto(help="Path to Nerfstudio scene config.yml file for the f3rm training run.")
     benchmarks: list = Proto([f"img_ycb_scene_{i}" for i in range(6)], help="Benchmark scenes.")
-    model_name: str = Proto("dex-f3rm", help="Benchmark scenes")
+    model_name: str = Proto("dex-f3rm_2025-02-10_174651", help="Benchmark scenes")
     benchmark_path: str = Proto("datasets/eyeinhand_nerf1", help="Benchmark scenes")
     # Initial proposals
     voxel_size: float = Proto(0.01, help="Voxel size to discretize workspace into (in meters).")
@@ -44,6 +43,26 @@ class OptimizationArgs(ParamsProto, cli_parse=False):
     viser_port: int = Proto(8012, help="Port to use for viser visualization server.")
     num_poses_to_visualize: int = Proto(10, help="Number of poses to visualize during and after optimization.")
 
+
+
+class CollisionArgs(PrefixProto, cli_parse=False):
+    """Arguments for collision checking a proposed grasp. The default values work well for the default Panda gripper."""
+
+    alpha_threshold: float = Proto(0.2, help="Alpha threshold for a point to be considered to be occupied.")
+    voxel_size: float = Proto(
+        0.0075,
+        help="Voxel size to voxelize the Panda gripper. You may need to adjust alpha if you change this.",
+    )
+    overlap_num: int = Proto(10, help="Number of overlapping points to be considered a collision.")
+
+    allow_finger_collisions: bool = Proto(
+        False,
+        help="Whether to allow collisions between the fingers, and hence use the gripper model without the fingers.",
+    )
+    ray_samples_per_batch: int = Proto(
+        2**22,
+        help="Number of ray samples to use per batch for collision checking, decrease if running out of memory.",
+    )
 
 # You can access the variables directly with OptimizationArgs.<field_name>, and do not need to instantiate an object
 # of this class.

@@ -217,10 +217,8 @@ def main(
     "final_dofs": grasps_data["joint_conf"].tolist(),
     "fall_time": np.zeros((num_grasps)).tolist()
     }
-
-    output_path = ycb_foundation_pose_out+f"/isaac_sim_grasps/hithand-{obj_name}-{model_name}-{prompt}.json"
-    
-    with open(output_path, 'w') as outfile:
+    output_path = f"datasets/eyeinhand_nerf1/benchmark/{model_name}"
+    with open(output_path+f"/hithand-{obj_name}-{model_name}-{prompt}.json", 'w') as outfile:
         # print("Created file: ", output_path)
         json.dump(data, outfile)
     print("Done")
