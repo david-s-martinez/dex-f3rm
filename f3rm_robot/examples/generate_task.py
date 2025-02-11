@@ -14,20 +14,128 @@ density not the alphas, as the voxel size can vary at optimization time.
 
 import json
 import random
+import time
 from pathlib import Path
 from typing import Dict, List, Tuple
-
+from pynput import keyboard
 import numpy as np
 import open3d as o3d
 import torch
 from jaxtyping import Float
-from pytorch3d.transforms import Transform3d
+from pytorch3d.transforms import Transform3d, euler_angles_to_matrix
 from scipy.spatial.transform import Rotation
 
 from f3rm_robot.assets import get_panda_gripper_mesh, get_hithand_gripper_mesh, get_query_frames_fk, apply_joint_correction_torch
 from f3rm_robot.load import LoadState, load_nerfstudio_outputs
 from f3rm_robot.task import Task, sample_query_points
 from f3rm_robot.visualizer import BaseVisualizer, ViserVisualizer
+
+# Define translation and rotation step sizes
+TRANSLATION_STEP = 0.001
+ROTATION_STEP = torch.tensor([5.0, 5.0, 5.0]).mul(torch.pi / 180)  # Convert degrees to radians
+
+# Key mapping for translation and rotation
+TRANSLATION_KEYS = {
+    "w": torch.tensor([TRANSLATION_STEP, 0, 0]),
+    "s": torch.tensor([-TRANSLATION_STEP, 0, 0]),
+    "a": torch.tensor([0, -TRANSLATION_STEP, 0]),
+    "d": torch.tensor([0, TRANSLATION_STEP, 0]),
+    "W": torch.tensor([0, 0, TRANSLATION_STEP]),
+    "S": torch.tensor([0, 0, -TRANSLATION_STEP]),
+}
+
+ROTATION_KEYS = {
+    "i": torch.tensor([ROTATION_STEP[0], 0, 0]),  # Rotate +X
+    "k": torch.tensor([-ROTATION_STEP[0], 0, 0]),  # Rotate -X
+    "j": torch.tensor([0, -ROTATION_STEP[1], 0]),  # Rotate -Y
+    "l": torch.tensor([0, ROTATION_STEP[1], 0]),  # Rotate +Y
+    "I": torch.tensor([0, 0, ROTATION_STEP[2]]),  # Rotate +Z
+    "K": torch.tensor([0, 0, -ROTATION_STEP[2]]),  # Rotate -Z
+}
+
+def modify_demo_pose(visualizer, demo_dict,load_state, demo_poses, joints_torch, torques_torch, is_finger_qp, num_query_points, num_fingers, num_finger_qf, qp_std_dev, index, device):
+    """Modify the selected demo pose using keyboard inputs."""
+    pose = demo_poses.get_matrix().clone().transpose(1,2)
+
+    print("\nUse WASD for XY translation, W/S (caps) for Z translation")
+    print("Use IJKL for rotation, I/K (caps) for Z rotation")
+    print("Press ENTER to confirm and exit.")
+
+    is_running = True  # Flag to control loop
+    movement = {"translation": torch.zeros(3), "rotation": torch.zeros(3)}
+
+    def on_press(key):
+        """Handles key press events for modifying pose."""
+        nonlocal is_running
+        
+        try:
+            key_str = key.char  # Convert key object to string
+            
+            # Apply translation
+            if key_str in TRANSLATION_KEYS:
+                movement["translation"] += TRANSLATION_KEYS[key_str]
+            
+            # Apply rotation
+            elif key_str in ROTATION_KEYS:
+                movement["rotation"] += ROTATION_KEYS[key_str]
+
+            # Confirm and exit
+            elif key_str == "\r":  # Enter key
+                print("Pose updated!")
+                is_running = False
+
+        except AttributeError:
+            pass  # Ignore special keys
+
+    def on_release(key):
+        """Handles key release events (optional)."""
+        nonlocal is_running
+        if key == keyboard.Key.esc:  # Escape key cancels modification
+            print("Pose modification cancelled.")
+            is_running = False
+            return False  # Stop listener
+
+    # Start listening for keyboard input
+    with keyboard.Listener(on_press=on_press, on_release=on_release, suppress=True) as listener:
+        while is_running:
+            if torch.any(movement["translation"] != 0):
+                pose[index,:3,-1]+= movement["translation"]
+                movement["translation"].zero_()  # Reset translation after applying
+
+            if torch.any(movement["rotation"] != 0):
+                R = euler_angles_to_matrix(movement["rotation"], "XYZ")
+                pose[index,:3, :3] = R @ pose[index,:3, :3]
+                movement["rotation"].zero_()  # Reset rotation after applying
+
+            demo_poses = Transform3d(matrix=pose.transpose(1,2))
+            time.sleep(0.1)  # Small delay for better user experience
+            print("\nUpdated Pose:")
+            print(demo_poses[index].get_matrix().cpu().numpy())
+            result = get_demo_qp(
+            load_state, 
+            demo_poses, 
+            joints_torch, 
+            torques_torch, 
+            is_finger_qp, 
+            num_query_points, 
+            num_fingers, 
+            num_finger_qf, 
+            qp_std_dev, 
+            device
+        )
+            outputs, query_points, qp_transformed, link_points, demo_poses, joints_torch, joints_np, torques_torch = result 
+            visualize_demos(
+                visualizer, 
+                load_state, 
+                demo_labels = demo_dict["demo_labels"], 
+                demo_poses = demo_poses, 
+                demo_qps = qp_transformed, 
+                demo_joints = joints_np,
+                is_update_pcd=False,
+                is_update_qp=False
+            )
+    
+    return outputs, query_points, qp_transformed, link_points, demo_poses, joints_torch, joints_np, torques_torch
 
 
 def load_demos(demo_path: Path) -> Tuple[Dict, Transform3d]:
@@ -69,14 +177,17 @@ def visualize_demos(
     demo_labels: List[str],
     demo_poses: Transform3d,
     demo_qps: Float[torch.Tensor, "d n 3"],
-    demo_joints: np.ndarray
+    demo_joints: np.ndarray,
+    is_update_pcd: bool = True,
+    is_update_qp: bool = True
 ):
-    # We use helpers from the main optimization scripts for visualization
-    from f3rm_robot.optimize import get_scene_pcd
+    if is_update_pcd:
+        # We use helpers from the main optimization scripts for visualization
+        from f3rm_robot.optimize import get_scene_pcd
 
-    # Show point cloud of the scene
-    scene_pcd = get_scene_pcd(load_state, num_points=100_000, voxel_size=0.005)
-    visualizer.add_o3d_point_cloud("scene_pcd", scene_pcd, point_size=0.005 + 0.001)
+        # Show point cloud of the scene
+        scene_pcd = get_scene_pcd(load_state, num_points=100_000, voxel_size=0.005)
+        visualizer.add_o3d_point_cloud("scene_pcd", scene_pcd, point_size=0.005 + 0.001)
     # Show query points, coordinate frame, and gripper mesh for each demo
     # base_gripper_mesh = get_panda_gripper_mesh()
     try:
@@ -90,58 +201,33 @@ def visualize_demos(
         base_gripper_mesh.compute_vertex_normals()
         # Transformation matrix, need to transpose Transform3d matrix as it uses row vectors
         transform = pose.get_matrix()[0].T
-
-        # Transformed query points
-        qp_pcd = o3d.geometry.PointCloud()
-        qp_pcd.points = o3d.utility.Vector3dVector(qps.cpu().numpy())
-        qp_pcd.paint_uniform_color([1, 0, 0])
-        visualizer.add_o3d_point_cloud(f"{label}/qp", qp_pcd, point_size=0.005)
+        if is_update_qp:
+            # Transformed query points
+            qp_pcd = o3d.geometry.PointCloud()
+            qp_pcd.points = o3d.utility.Vector3dVector(qps.cpu().numpy())
+            qp_pcd.paint_uniform_color([1, 0, 0])
+            visualizer.add_o3d_point_cloud(f"{label}/qp", qp_pcd, point_size=0.005)
 
         # Coordinate frame for gripper pose
-        pose_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.03)
-        pose_frame.transform(transform)
-        visualizer.add_o3d_mesh(f"{label}/frame", pose_frame)
-
-        # Coordinate frame for fingers pose
-        for i, (name, tf) in enumerate(f3rm_tfs.items()):
+        if is_update_qp:
             pose_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.03)
-            pose_frame.transform(tf).transform(transform)
-            visualizer.add_o3d_mesh(f"{label}/{i}", pose_frame)
+            pose_frame.transform(transform)
+            visualizer.add_o3d_mesh(f"{label}/frame", pose_frame)
+        if is_update_qp:
+            # Coordinate frame for fingers pose
+            for i, (name, tf) in enumerate(f3rm_tfs.items()):
+                pose_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.03)
+                pose_frame.transform(tf).transform(transform)
+                visualizer.add_o3d_mesh(f"{label}/{i}", pose_frame)
 
         # Gripper mesh
         gripper_mesh = o3d.geometry.TriangleMesh(base_gripper_mesh)
         gripper_mesh.transform(transform)
         visualizer.add_o3d_mesh(f"{label}/gripper_mesh", gripper_mesh)
 
-
-def generate_task(
-    scene: str,
-    demo_fname: str,
-    num_query_points: int,
-    qp_std_dev: float,
-    save: bool,
-    disable_visualize: bool,
-    viser_host: str,
-    viser_port: int,
-    num_fingers: int = 5,
-    num_finger_qf: int = 3,
-    is_finger_qp: bool = True
-):
-    """Generate Task for the given scene and demos."""
-    # Load the feature field
-    load_state = load_nerfstudio_outputs(scene)
-    device = load_state.pipeline.device
-
-    # Load the demos for this scene
-    dataset = load_state.pipeline.datamanager.get_datapath()
-    demo_dict, demo_poses, joints_torch, torques_torch = load_demos(dataset / demo_fname)
-
+def get_demo_qp(load_state, demo_poses, joints_torch, torques_torch, is_finger_qp, num_query_points, num_fingers, num_finger_qf, qp_std_dev, device):
     # Sample query points and transform by demo poses. The optimization can be noisy depending on the sampling of the
     # query points, so you might want to try multiple different samples.
-
-    joints_torch = joints_torch.to(device)
-    joints_torch = apply_joint_correction_torch(joints_torch)
-    torques_torch = torques_torch.to(device)
     joints_np = joints_torch.detach().cpu().numpy().reshape(-1,5,4)
 
     if is_finger_qp:
@@ -170,7 +256,92 @@ def generate_task(
     feature_field = load_state.feature_field_adapter()
     with torch.no_grad():
         outputs = feature_field(qp_transformed)
+        # Visualize the scene and demos if required
+    return outputs, query_points, qp_transformed, link_points, demo_poses, joints_torch, joints_np, torques_torch
 
+def generate_task(
+    scene: str,
+    demo_fname: str,
+    num_query_points: int,
+    qp_std_dev: float,
+    save: bool,
+    disable_visualize: bool,
+    viser_host: str,
+    viser_port: int,
+    num_fingers: int = 5,
+    num_finger_qf: int = 3,
+    is_finger_qp: bool = True,
+    is_fix_demos: bool = False,
+):
+    """Generate Task for the given scene and demos."""
+    # Load the feature field
+    load_state = load_nerfstudio_outputs(scene)
+    device = load_state.pipeline.device
+
+    # Load the demos for this scene
+    dataset = load_state.pipeline.datamanager.get_datapath()
+    demo_dict, demo_poses, joints_torch, torques_torch = load_demos(dataset / demo_fname)
+    joints_torch = joints_torch.to(device)
+    joints_torch = apply_joint_correction_torch(joints_torch)
+    torques_torch = torques_torch.to(device)
+    joints_np = joints_torch.detach().cpu().numpy().reshape(-1,5,4)
+
+    result = get_demo_qp(
+        load_state, 
+        demo_poses, 
+        joints_torch, 
+        torques_torch, 
+        is_finger_qp, 
+        num_query_points, 
+        num_fingers, 
+        num_finger_qf, 
+        qp_std_dev, 
+        device
+    )
+    outputs, query_points, qp_transformed, link_points, demo_poses, joints_torch, joints_np, torques_torch = result
+    if not disable_visualize:
+        visualizer = ViserVisualizer(host=viser_host, port=viser_port)
+        visualize_demos(
+            visualizer, 
+            load_state, 
+            demo_labels = demo_dict["demo_labels"], 
+            demo_poses = demo_poses, 
+            demo_qps = qp_transformed, 
+            demo_joints = joints_np,
+            is_update_qp = not is_fix_demos
+        )
+        try:
+            input("Press Enter or Ctrl+C to exit.")
+        except KeyboardInterrupt:
+            print()
+            pass
+        print("Exiting...")
+
+    is_end = "n"   
+    while is_end == "n" and is_fix_demos:
+        print(f"Available poses: 0 to {len(demo_poses) - 1}")
+        index = int(input("Enter index of pose to modify: "))
+
+        result = modify_demo_pose(
+            visualizer, 
+            demo_dict,
+            load_state,
+            demo_poses,
+            joints_torch,
+            torques_torch,is_finger_qp,
+            num_query_points,num_fingers,
+            num_finger_qf,
+            qp_std_dev,
+            index,
+            device
+        )
+
+        outputs, query_points, qp_transformed, link_points, demo_poses, joints_torch, joints_np, torques_torch = result
+        if is_fix_demos:
+            is_end = str(input("End y/n: "))
+        else:
+            is_end = "y"
+        
     # Create task and save
     task = Task(
         name = demo_dict["task"],
@@ -189,25 +360,6 @@ def generate_task(
             save_path = f"f3rm_robot/assets/hithand_tasks_og/{task.name}.pt"
         torch.save(task, save_path)
         print(f"Saved task to {save_path}")
-
-    # Visualize the scene and demos if required
-    if not disable_visualize:
-        visualizer = ViserVisualizer(host=viser_host, port=viser_port)
-        visualize_demos(
-            visualizer, 
-            load_state, 
-            demo_labels = demo_dict["demo_labels"], 
-            demo_poses = demo_poses, 
-            demo_qps = qp_transformed, 
-            demo_joints = joints_np
-        )
-        try:
-            input("Press Enter or Ctrl+C to exit.")
-        except KeyboardInterrupt:
-            print()
-            pass
-        print("Exiting...")
-
 
 if __name__ == "__main__":
     import argparse

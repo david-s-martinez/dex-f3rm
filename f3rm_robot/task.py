@@ -69,7 +69,21 @@ def get_tasks() -> List[Task]:
     # task_names = ["caterpillar_ear", "mug_handle", "mug_lip", "rack_place", "screwdriver_handle"]
     # task_paths = [get_asset_path(f"tasks/{task_name}.pt") for task_name in task_names]
     # task_names = ["beige_bowl","black_headphones","gray_sweep","mentos","rubiks_cube","white_mug_body","black_foam_cube","crackers_box","laying_teddy_bear","peach","teddy_bear"]
-    task_names = ["laying_teddy_bear", "beige_bowl", "black_headphones", "mentos", "black_foam_cube"] # better currently
+    # task_names = ["laying_teddy_bear", "beige_bowl", "black_headphones", "mentos", "black_foam_cube"] # better currently
+    task_names = ["teddy_bear_legs",
+                  "teddy_bear_arms", 
+                  "teddy_bear_ears", 
+                  "teddy_bear_head",
+                  "beige_bowl",
+                  "white_mug_body",
+                  "white_mug_handle",
+                  "black_headphones_band",
+                  "crackers_box",
+                  "gray_sweep_handle",
+                  "mentos",
+                  "black_foam_cube",
+                  "rubiks_cube",
+                  "peach"] # all new corrected
     # task_paths = [get_asset_path(f"hithand_tasks/{task_name}.pt") for task_name in task_names]
     # task_paths = [get_asset_path(f"hithand_tasks_avg_fk/{task_name}.pt") for task_name in task_names]
     # task_paths = [get_asset_path(f"hithand_tasks_og/{task_name}.pt") for task_name in task_names]
