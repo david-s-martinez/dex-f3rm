@@ -28,7 +28,7 @@ from f3rm_robot.initial_proposals import (
     voxel_downsample,
 )
 from f3rm_robot.load import LoadState, load_nerfstudio_outputs
-from f3rm_robot.task import Task, get_tasks
+from f3rm_robot.task import Task, get_tasks, grasp_primitives_dict
 from f3rm_robot.utils import get_gripper_meshes, get_hand_meshes, get_heatmap, sample_point_cloud
 from f3rm_robot.visualizer import BaseVisualizer, ViserVisualizer
 from f3rm_robot.assets import get_query_frames_fk, get_query_frames_fk_torch
@@ -71,7 +71,7 @@ def compute_task_embedding(task: Task) -> Float[torch.Tensor, "num_qps num_chann
 
 
 def retrieve_task(
-    query: str, clip_model: CLIP, device: torch.device
+    query: str, clip_model: CLIP, device: torch.device, is_use_grasp_prompt: bool = True
 ) -> Tuple[Task, Float[torch.Tensor, "num_qps num_channels"], Float[torch.Tensor, "1 num_channels"]]:
     """
     Retrieve the most relevant task for a given query. Returns the Task, task embedding, and query embedding.
@@ -81,9 +81,22 @@ def retrieve_task(
         tokens = tokenize(query).to(device)
         query_emb = clip_model.encode_text(tokens)
         query_emb /= query_emb.norm(dim=-1, keepdim=True)
-
-    # Compute mean embedding for each task, and compare to the query
-    tasks = get_tasks()
+    if is_use_grasp_prompt:
+        with torch.no_grad():
+            grasp_descriptions = list(grasp_primitives_dict.keys())
+            primitive_sims = {}
+            for i, grasp_description in enumerate(grasp_descriptions):
+                grasp_tokens = tokenize(grasp_description).to(device)
+                grasp_query_emb = clip_model.encode_text(grasp_tokens)
+                grasp_query_emb /= grasp_query_emb.norm(dim=-1, keepdim=True)
+                prim_query_sim = torch.cosine_similarity(query_emb, grasp_query_emb)
+                primitive_sims[grasp_description] = prim_query_sim
+        most_sim_grasp = max(primitive_sims, key=primitive_sims.get)        
+        print(f"Found most similar grasp type {most_sim_grasp}: {grasp_primitives_dict[most_sim_grasp]}")
+        tasks = get_tasks(grasp_primitives_dict[most_sim_grasp])
+    else:
+        # Compute mean embedding for each task, and compare to the query
+        tasks = get_tasks()
     task_embs = torch.stack([compute_task_embedding(t) for t in tasks]).to(device)
     mean_task_embs = task_embs.mean(dim=1)
     task_sims = torch.cosine_similarity(query_emb, mean_task_embs)
@@ -231,6 +244,8 @@ def language_pose_optimization(
     is_show_hand_opt: bool = True,
     is_save_gripper_meshes: bool = False,
     is_optim_less_joints: bool = True,
+    is_use_grasp_prompt: bool = True
+
 ) -> Dict[str, Any]:
     """
     Optimize 6-DOF poses for the given language query. We return the ranked grasps after optimization and the metrics.
@@ -238,7 +253,7 @@ def language_pose_optimization(
     metrics = {"query": query}
 
     # Retrieve the relevant task for the query, and compute the task embedding
-    task, task_emb, query_emb = retrieve_task(query, clip_model, device)
+    task, task_emb, query_emb = retrieve_task(query, clip_model, device, is_use_grasp_prompt)
     task_emb = task_emb.reshape(-1)  # [num_qps * num_channels]
     query_points = task.query_points.to(device)
 
@@ -559,7 +574,7 @@ def entrypoint():
 
         # Optimize for the query!
         try:
-            results = language_pose_optimization(feature_field, clip_model, query, device, is_show_hand_opt=not is_benchmark)
+            results = language_pose_optimization(feature_field, clip_model, query, device, is_show_hand_opt=not is_benchmark, is_use_grasp_prompt=args.is_use_grasp_prompt)
         except NoProposalsError as e:
             # Print error message
             print(e)

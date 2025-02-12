@@ -13,6 +13,7 @@ class OptimizationArgs(ParamsProto, cli_parse=False):
     model_name: str = Proto("dex-f3rm_2025-02-11_185942", help="Benchmark scenes")
     benchmark_path: str = Proto("datasets/eyeinhand_nerf1", help="Path to bechmark folder.")
     # Initial proposals
+    is_use_grasp_prompt: bool = Proto(True, help="Whether to enable selection of grasp primitive from prompt.")
     voxel_size: float = Proto(0.01, help="Voxel size to discretize workspace into (in meters).")
     # num_rots_per_voxel: int = Proto(8, help="Number of rotations to sample for each voxel.")
     num_rots_per_voxel: int = Proto(4, help="Number of rotations to sample for each voxel.")

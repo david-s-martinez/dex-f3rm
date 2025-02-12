@@ -63,27 +63,34 @@ class Task:
     def num_channels(self) -> int:
         return self.demo_features.shape[-1]
 
-
-def get_tasks() -> List[Task]:
+grasp_primitives_dict = {
+    "Cylinder grasp for larger objects like boxes or bottles or balls": [ "teddy_bear_head","white_mug_body","teddy_bear_legs"],
+    "Hook grasp for objects like tools or bag straps": ["black_headphones_band", "gray_sweep_handle"],
+    "Pinch grasp for small objects like candies or fruits and small parts": ["teddy_bear_ears", "white_mug_handle", "peach", "black_foam_cube"],
+    "Lumbrical grasp for flat or boxy objects like books and packages": ["beige_bowl", "crackers_box"],
+    "Tripod grasp for objects requiring precision like small toys or pc mouse": ["teddy_bear_arms", "mentos", "rubiks_cube"]
+}
+def get_tasks(task_names = None) -> List[Task]:
     """Load all tasks from cache. Note these are for ClIP ViT-L/14@336px."""
-    # task_names = ["caterpillar_ear", "mug_handle", "mug_lip", "rack_place", "screwdriver_handle"]
-    # task_paths = [get_asset_path(f"tasks/{task_name}.pt") for task_name in task_names]
-    # task_names = ["beige_bowl","black_headphones","gray_sweep","mentos","rubiks_cube","white_mug_body","black_foam_cube","crackers_box","laying_teddy_bear","peach","teddy_bear"]
-    # task_names = ["laying_teddy_bear", "beige_bowl", "black_headphones", "mentos", "black_foam_cube"] # better currently
-    task_names = ["teddy_bear_legs",
-                  "teddy_bear_arms", 
-                  "teddy_bear_ears", 
-                  "teddy_bear_head",
-                  "beige_bowl",
-                  "white_mug_body",
-                  "white_mug_handle",
-                  "black_headphones_band",
-                  "crackers_box",
-                  "gray_sweep_handle",
-                  "mentos",
-                  "black_foam_cube",
-                  "rubiks_cube",
-                  "peach"] # all new corrected
+    if task_names == None:
+        # task_names = ["caterpillar_ear", "mug_handle", "mug_lip", "rack_place", "screwdriver_handle"]
+        # task_paths = [get_asset_path(f"tasks/{task_name}.pt") for task_name in task_names]
+        # task_names = ["beige_bowl","black_headphones","gray_sweep","mentos","rubiks_cube","white_mug_body","black_foam_cube","crackers_box","laying_teddy_bear","peach","teddy_bear"]
+        # task_names = ["laying_teddy_bear", "beige_bowl", "black_headphones", "mentos", "black_foam_cube"] # better currently
+        task_names = ["teddy_bear_legs",
+                    "teddy_bear_arms", 
+                    "teddy_bear_ears", 
+                    "teddy_bear_head",
+                    "beige_bowl",
+                    "white_mug_body",
+                    "white_mug_handle",
+                    "black_headphones_band",
+                    "crackers_box",
+                    "gray_sweep_handle",
+                    "mentos",
+                    "black_foam_cube",
+                    "rubiks_cube",
+                    "peach"] # all new corrected
     # task_paths = [get_asset_path(f"hithand_tasks/{task_name}.pt") for task_name in task_names]
     # task_paths = [get_asset_path(f"hithand_tasks_avg_fk/{task_name}.pt") for task_name in task_names]
     # task_paths = [get_asset_path(f"hithand_tasks_og/{task_name}.pt") for task_name in task_names]
