@@ -10,15 +10,16 @@ class OptimizationArgs(ParamsProto, cli_parse=False):
 
     scene: str = Proto(help="Path to Nerfstudio scene config.yml file for the f3rm training run.")
     benchmarks: list = Proto([f"img_ycb_scene_{i}" for i in range(6)], help="Benchmark scenes.")
-    model_name: str = Proto("dex-f3rm_2025-02-11_185942", help="Benchmark scenes")
+    model_name: str = Proto("dex-f3rm_2025-02-13_220329", help="Benchmark scenes")
     benchmark_path: str = Proto("datasets/eyeinhand_nerf1", help="Path to bechmark folder.")
     # Initial proposals
     is_use_grasp_prompt: bool = Proto(True, help="Whether to enable selection of grasp primitive from prompt.")
     voxel_size: float = Proto(0.01, help="Voxel size to discretize workspace into (in meters).")
-    # num_rots_per_voxel: int = Proto(8, help="Number of rotations to sample for each voxel.")
-    num_rots_per_voxel: int = Proto(4, help="Number of rotations to sample for each voxel.")
+    num_rots_per_voxel: int = Proto(15, help="Number of rotations to sample for each voxel.")
+    # num_rots_per_voxel: int = Proto(4, help="Number of rotations to sample for each voxel.")
     alpha_threshold: float = Proto(0.1, help="Alpha threshold to use for marching cubes masking.")
     softmax_temperature: float = Proto(0.001, help="Temperature to use for softmax for language masking.")
+    max_voxels: int = Proto(400, help="Max number of voxels after similarity with prompt.")
 
     # Optimization
     num_steps: int = Proto(600, help="Number of optimization steps to use.")
@@ -33,9 +34,10 @@ class OptimizationArgs(ParamsProto, cli_parse=False):
     )
     min_proposals: int = Proto(2048, help="Minimum number of proposals to keep after pruning.")
     prune_after: int = Proto(10, help="Number of optimization steps to run before pruning.")
-
+    num_outs: int = Proto(50, help="Max number of outputs (for benchmark).")
+    
     # Min and max bounds of the workspace in world frame with metric scale
-    min_bounds: Tuple[float, float, float] = (-0.2, -0.80, -0.01)
+    min_bounds: Tuple[float, float, float] = (-0.2, -0.80, 0.07)
     max_bounds: Tuple[float, float, float] = (0.7, 0.25, 0.30)
 
     # Visualization
@@ -54,7 +56,8 @@ class CollisionArgs(PrefixProto, cli_parse=False):
         0.0075,
         help="Voxel size to voxelize the Panda gripper. You may need to adjust alpha if you change this.",
     )
-    overlap_num: int = Proto(10, help="Number of overlapping points to be considered a collision.")
+    overlap_num: int = Proto(1, help="Number of intitial overlapping points to be considered a collision.")
+    overlap_num_final: int = Proto(10, help="Number of final overlapping points to be considered a collision.")
 
     allow_finger_collisions: bool = Proto(
         False,

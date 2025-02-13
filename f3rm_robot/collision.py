@@ -71,7 +71,7 @@ def get_gripper_fk_points(joints) -> torch.Tensor:
     return voxel_points
 
 def get_collision_info(
-    field: Field, grasps_to_nerf: Transform3d, joints: torch.tensor = None
+    field: Field, grasps_to_nerf: Transform3d, joints: torch.tensor = None, is_final: bool = False
 ) -> Tuple[Bool[torch.Tensor, "num_grasps"], Float[torch.Tensor, "num_grasps num_points 3"]]:
     """
     Check if the gripper has a collision with the scene for the given grasps. Call this with torch.no_grad unless you
@@ -120,11 +120,12 @@ def get_collision_info(
     alpha = alpha_flat.view(gripper_points.shape[:2])
     assert gripper_points.shape[:2] == alpha.shape[:2], "You messed up the shapes!"
     overlap_num = (alpha >= CollisionArgs.alpha_threshold).sum(dim=1)
-    collision_detected = (overlap_num >= CollisionArgs.overlap_num).squeeze()
+    overlap_min = CollisionArgs.overlap_num_final if is_final else CollisionArgs.overlap_num
+    collision_detected = (overlap_num >= overlap_min).squeeze()
     return collision_detected, gripper_points
 
 
-def has_collision(feature_field: FeatureFieldAdapter, grasps_to_world: Transform3d, joints: torch.tensor) -> Bool[torch.Tensor, "num_grasps"]:
+def has_collision(feature_field: FeatureFieldAdapter, grasps_to_world: Transform3d, joints: torch.tensor, is_final: bool = False) -> Bool[torch.Tensor, "num_grasps"]:
     """
     Check if the gripper has a collision with the scene for the given grasps. Call this with torch.no_grad unless you
     need the gradients, otherwise it is much slower.
@@ -132,4 +133,4 @@ def has_collision(feature_field: FeatureFieldAdapter, grasps_to_world: Transform
     Returns a boolean tensor for whether a collision was detected for each grasp
     """
     grasps_to_nerf = grasps_to_world.compose(feature_field.world_to_nerf)
-    return get_collision_info(field=feature_field.rgb_field, grasps_to_nerf=grasps_to_nerf, joints = joints)[0]
+    return get_collision_info(field=feature_field.rgb_field, grasps_to_nerf=grasps_to_nerf, joints = joints, is_final=is_final)[0]

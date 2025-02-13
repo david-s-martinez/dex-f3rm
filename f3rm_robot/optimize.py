@@ -148,7 +148,7 @@ def get_initial_voxel_grid(
         )
 
     # Feature masking by comparing each voxel's feature with the user query and negatives
-    queries = [query, "object", "things", "stuff", "texture"]  # we use the negatives from LERF
+    queries = [query, "object", "things", "stuff", "texture", "robot hand", "robot arm"]  # we use the negatives from LERF
     with torch.no_grad():
         tokens = tokenize(queries).to(device)
         query_embs = clip_model.encode_text(tokens).float()
@@ -176,7 +176,14 @@ def get_initial_voxel_grid(
         raise NoProposalsError(
             f'No proposals found for query "{query}" after language masking. Try use a different query.'
         )
-
+    
+    # filter and sort voxels accoding to similarity
+    k = min(args.max_voxels, len(voxel_grid))
+    _, top_indices = torch.topk(voxel_sims, k)
+    voxel_grid = voxel_grid[top_indices]
+    voxel_sims = voxel_sims[top_indices]
+    
+    # output
     metrics["language_masked"] = len(voxel_grid)
     print(f"Number of voxels after language masking using CLIP features: {len(voxel_grid)}")
     if args.visualize:
@@ -244,7 +251,8 @@ def language_pose_optimization(
     is_show_hand_opt: bool = True,
     is_save_gripper_meshes: bool = False,
     is_optim_less_joints: bool = True,
-    is_use_grasp_prompt: bool = True
+    is_use_grasp_prompt: bool = True,
+    is_output_less: bool = False,
 
 ) -> Dict[str, Any]:
     """
@@ -461,10 +469,10 @@ def language_pose_optimization(
     with torch.no_grad():
         if is_optim_less_joints:
             joints = get_complete_joints(base_joints, joints, num_links, num_fingers)
-            collision_detected = has_collision(feature_field, grasps_to_world, joints)
+            collision_detected = has_collision(feature_field, grasps_to_world, joints, is_final=True)
         else:
-            collision_detected = has_collision(feature_field, grasps_to_world, joints)
-        # collision_detected = has_collision(feature_field, grasps_to_world, None)
+            collision_detected = has_collision(feature_field, grasps_to_world, joints, is_final=True)
+        # collision_detected = has_collision(feature_field, grasps_to_world, None, is_final=True)
     print(f"Removed {collision_detected.sum()} of {len(grasps_to_world)} optimized proposals in collision")
     grasps_to_world = grasps_to_world[~collision_detected]
     joints = joints[~collision_detected]
@@ -476,6 +484,11 @@ def language_pose_optimization(
     sorted_losses, sorted_indices = masked_losses.sort(descending=False)
     grasps_to_world = grasps_to_world[sorted_indices]
     joints = joints[sorted_indices]
+    if is_output_less:
+        num_outs = args.num_outs
+        num_outs = min(num_outs, len(joints))
+        joints = joints[:num_outs]
+        grasps_to_world = grasps_to_world[:num_outs]
     results = {"grasps_to_world": grasps_to_world, "joints": joints ,"metrics": metrics}
     # Show the best grasps without collisions
     if args.visualize:
@@ -574,7 +587,7 @@ def entrypoint():
 
         # Optimize for the query!
         try:
-            results = language_pose_optimization(feature_field, clip_model, query, device, is_show_hand_opt=not is_benchmark, is_use_grasp_prompt=args.is_use_grasp_prompt)
+            results = language_pose_optimization(feature_field, clip_model, query, device, is_show_hand_opt=not is_benchmark, is_use_grasp_prompt=args.is_use_grasp_prompt, is_output_less = is_benchmark)
         except NoProposalsError as e:
             # Print error message
             print(e)
