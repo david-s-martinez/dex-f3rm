@@ -10,8 +10,9 @@ class OptimizationArgs(ParamsProto, cli_parse=False):
 
     scene: str = Proto(help="Path to Nerfstudio scene config.yml file for the f3rm training run.")
     benchmarks: list = Proto([f"img_ycb_scene_{i}" for i in range(6)], help="Benchmark scenes.")
-    model_name: str = Proto("dex-f3rm_2025-02-13_220329", help="Benchmark scenes")
+    model_name: str = Proto("dex-f3rm_2025-02-15_194541", help="Benchmark scenes")
     benchmark_path: str = Proto("datasets/eyeinhand_nerf1", help="Path to bechmark folder.")
+    benchmark_config: str = Proto("scene_benchmark_data_better.json", help="Path to bechmark folder.")
     # Initial proposals
     is_use_grasp_prompt: bool = Proto(True, help="Whether to enable selection of grasp primitive from prompt.")
     voxel_size: float = Proto(0.01, help="Voxel size to discretize workspace into (in meters).")
@@ -22,8 +23,9 @@ class OptimizationArgs(ParamsProto, cli_parse=False):
     max_voxels: int = Proto(400, help="Max number of voxels after similarity with prompt.")
 
     # Optimization
-    num_steps: int = Proto(600, help="Number of optimization steps to use.")
-    lr: float = Proto(2e-3, help="Learning rate to use for language-guided pose optimization.")
+    num_steps: int = Proto(200, help="Number of optimization steps to use.")
+    lr_pose: float = Proto(2e-3, help="Learning rate to use for language-guided pose optimization.")
+    lr_joints: float = Proto(2e-2, help="Learning rate to use for language-guided joint optimization.")
     ray_samples_per_batch: int = Proto(
         2**18, help="Number of ray samples to use per batch. Decrease if you are running out of CUDA memory."
     )
@@ -56,7 +58,7 @@ class CollisionArgs(PrefixProto, cli_parse=False):
         0.0075,
         help="Voxel size to voxelize the Panda gripper. You may need to adjust alpha if you change this.",
     )
-    overlap_num: int = Proto(1, help="Number of intitial overlapping points to be considered a collision.")
+    overlap_num: int = Proto(2, help="Number of intitial overlapping points to be considered a collision.")
     overlap_num_final: int = Proto(10, help="Number of final overlapping points to be considered a collision.")
 
     allow_finger_collisions: bool = Proto(
@@ -84,7 +86,8 @@ def validate_args():
     assert _args.softmax_temperature > 0, "--softmax_temperature must be positive"
     # Optimization
     assert _args.num_steps > 0, "--num_steps must be positive"
-    assert _args.lr > 0, "--lr must be positive"
+    assert _args.lr_pose > 0, "--lr must be positive"
+    assert _args.lr_joints > 0, "--lr must be positive"
     assert _args.ray_samples_per_batch > 0, "--ray_samples_per_batch must be positive"
     # Pruning
     assert 0 < _args.keep_proportion <= 1.0, "--keep_proportion must be between 0 and 1"

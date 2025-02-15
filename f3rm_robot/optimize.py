@@ -243,7 +243,7 @@ def language_pose_optimization(
     clip_model: CLIP, 
     query: str, 
     device: torch.device,
-    num_links: int = 4,
+    num_links: int = 3,
     num_fingers: int = 5,
     is_qp_fk: bool = True,
     is_init_coll_joint_check : bool = False,
@@ -362,7 +362,8 @@ def language_pose_optimization(
     translations.requires_grad_()
     rotations.requires_grad_()
     joints.requires_grad_()
-    optimizer = torch.optim.Adam([translations, rotations, joints], lr=args.lr)
+    optimizer = torch.optim.Adam([translations, rotations], lr=args.lr_pose)
+    joints_optimizer = torch.optim.Adam([joints], lr=args.lr_joints)
     pose_loss_fn = torch.nn.CosineSimilarity()
     language_guidance_fn = get_language_guidance_fn(voxel_sims, query_emb)
     batch_size = args.ray_samples_per_batch // len(query_points)
@@ -371,6 +372,7 @@ def language_pose_optimization(
     # Now we can optimize!
     for step in tqdm(range(args.num_steps), desc=f'Optimizing poses for "{query}"'):
         optimizer.zero_grad()
+        joints_optimizer.zero_grad()
         all_grasps_to_world = []
         all_joints = []
         step_losses = []
@@ -422,6 +424,7 @@ def language_pose_optimization(
 
         # Optimizer step
         optimizer.step()
+        joints_optimizer.step()
         with torch.no_grad():
             joints.copy_(torch.clamp(joints, 0, 1.57))
         step_losses = torch.cat(step_losses)
@@ -460,7 +463,8 @@ def language_pose_optimization(
             translations.requires_grad_()
             rotations.requires_grad_()
             joints.requires_grad_()
-            optimizer = torch.optim.Adam([translations, rotations, joints], lr=args.lr)
+            optimizer = torch.optim.Adam([translations, rotations], lr=args.lr_pose)
+            joints_optimizer = torch.optim.Adam([joints], lr=args.lr_joints)
             metrics["num_proposals"][f"pruned_step_{step:04d}"] = new_num_proposals
 
     # Optimization finished, check remaining grasps for collisions
@@ -562,7 +566,7 @@ def entrypoint():
         input_path = Path(args.scene)
 
         # Construct the new path
-        benchmark_data_path = Path(args.benchmark_path) / input_path.parts[1] / "scene_benchmark_data.json"
+        benchmark_data_path = Path(args.benchmark_path) / input_path.parts[1] / args.benchmark_config
 
         with open(benchmark_data_path) as f:
             benchmark_data = json.load(f)

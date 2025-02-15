@@ -212,9 +212,9 @@ def main(
     "scene_path": scene_base_path, 
     "object_id": obj_name, 
     "pose": mesh_T_wrists,
-    "dofs": np.zeros((num_grasps,20)).tolist(),
+    "final_dofs": np.zeros((num_grasps,20)).tolist(),
     "graspit_dofs": np.zeros((num_grasps,20)).tolist(),
-    "final_dofs": grasps_data["joint_conf"].tolist(),
+    "dofs": grasps_data["joint_conf"].tolist(),
     "fall_time": np.zeros((num_grasps)).tolist()
     }
     output_path = f"datasets/eyeinhand_nerf1/benchmark/{model_name}"
