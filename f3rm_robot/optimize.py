@@ -93,10 +93,10 @@ def retrieve_task(
                 primitive_sims[grasp_description] = prim_query_sim
         most_sim_grasp = max(primitive_sims, key=primitive_sims.get)        
         print(f"Found most similar grasp type {most_sim_grasp}: {grasp_primitives_dict[most_sim_grasp]}")
-        tasks = get_tasks(grasp_primitives_dict[most_sim_grasp])
+        tasks = get_tasks(grasp_primitives_dict[most_sim_grasp], tasks_folder = args.tasks_folder)
     else:
         # Compute mean embedding for each task, and compare to the query
-        tasks = get_tasks()
+        tasks = get_tasks(tasks_folder = args.tasks_folder)
     task_embs = torch.stack([compute_task_embedding(t) for t in tasks]).to(device)
     mean_task_embs = task_embs.mean(dim=1)
     task_sims = torch.cosine_similarity(query_emb, mean_task_embs)

@@ -12,8 +12,12 @@ class OptimizationArgs(ParamsProto, cli_parse=False):
     benchmarks: list = Proto([f"img_ycb_scene_{i}" for i in range(6)], help="Benchmark scenes.")
     model_name: str = Proto("dex-f3rm_2025-02-15_194541", help="Benchmark scenes")
     benchmark_path: str = Proto("datasets/eyeinhand_nerf1", help="Path to bechmark folder.")
-    benchmark_config: str = Proto("scene_benchmark_data_better.json", help="Path to bechmark folder.")
+    benchmark_config: str = Proto("scene_benchmark_data_better.json", help="Path to bechmark config.")
+    # benchmark_config: str = Proto("scene_benchmark_data.json", help="Path to bechmark config.")
     # Initial proposals
+    tasks_folder: str = Proto("hithand_tasks_og_fk", help="Name of tasks folder.")
+    # tasks_folder: str = Proto("hithand_tasks_avg_fk", help="Name of tasks folder.")
+    # tasks_folder: str = Proto("hithand_tasks_og", help="Name of tasks folder.")
     is_use_grasp_prompt: bool = Proto(True, help="Whether to enable selection of grasp primitive from prompt.")
     voxel_size: float = Proto(0.01, help="Voxel size to discretize workspace into (in meters).")
     num_rots_per_voxel: int = Proto(15, help="Number of rotations to sample for each voxel.")

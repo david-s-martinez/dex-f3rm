@@ -70,13 +70,10 @@ grasp_primitives_dict = {
     "Lumbrical grasp for flat or boxy objects like books and packages": ["beige_bowl", "crackers_box"],
     "Tripod grasp for objects requiring precision like small toys or pc mouse": ["teddy_bear_arms", "mentos", "rubiks_cube"]
 }
-def get_tasks(task_names = None) -> List[Task]:
+
+def get_tasks(task_names = None, tasks_folder = "hithand_tasks_og_fk") -> List[Task]:
     """Load all tasks from cache. Note these are for ClIP ViT-L/14@336px."""
     if task_names == None:
-        # task_names = ["caterpillar_ear", "mug_handle", "mug_lip", "rack_place", "screwdriver_handle"]
-        # task_paths = [get_asset_path(f"tasks/{task_name}.pt") for task_name in task_names]
-        # task_names = ["beige_bowl","black_headphones","gray_sweep","mentos","rubiks_cube","white_mug_body","black_foam_cube","crackers_box","laying_teddy_bear","peach","teddy_bear"]
-        # task_names = ["laying_teddy_bear", "beige_bowl", "black_headphones", "mentos", "black_foam_cube"] # better currently
         task_names = ["teddy_bear_legs",
                     "teddy_bear_arms", 
                     "teddy_bear_ears", 
@@ -91,9 +88,6 @@ def get_tasks(task_names = None) -> List[Task]:
                     "black_foam_cube",
                     "rubiks_cube",
                     "peach"] # all new corrected
-    # task_paths = [get_asset_path(f"hithand_tasks/{task_name}.pt") for task_name in task_names]
-    # task_paths = [get_asset_path(f"hithand_tasks_avg_fk/{task_name}.pt") for task_name in task_names]
-    # task_paths = [get_asset_path(f"hithand_tasks_og/{task_name}.pt") for task_name in task_names]
-    task_paths = [get_asset_path(f"hithand_tasks_og_fk/{task_name}.pt") for task_name in task_names]
+    task_paths = [get_asset_path(f"{tasks_folder}/{task_name}.pt") for task_name in task_names]
     tasks = [torch.load(task_path) for task_path in task_paths]
     return tasks

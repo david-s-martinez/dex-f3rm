@@ -6,7 +6,11 @@ from datetime import datetime
 subprocess.run(["sudo", "chmod", "-R", "777", "./datasets/"])
 file_path = "f3rm_robot/args.py"
 time_stamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
-new_model_name = "dex-f3rm_" + time_stamp
+model_name = str(input("Write model name or press enter to default name: "))
+if model_name == "":
+    new_model_name = "dex-f3rm_" + time_stamp
+else:
+    new_model_name = f"{model_name}_" + time_stamp
 output_path = f"datasets/eyeinhand_nerf1/benchmark/{new_model_name}"
 if not os.path.exists(output_path):
     os.makedirs(output_path)

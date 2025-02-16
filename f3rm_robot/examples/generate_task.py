@@ -17,7 +17,6 @@ import random
 import time
 from pathlib import Path
 from typing import Dict, List, Tuple
-from pynput import keyboard
 import numpy as np
 import open3d as o3d
 import torch
@@ -53,8 +52,26 @@ ROTATION_KEYS = {
     "K": torch.tensor([0, 0, -ROTATION_STEP[2]]),  # Rotate -Z
 }
 
-def modify_demo_pose(visualizer, demo_dict,load_state, demo_poses, joints_torch, torques_torch, is_finger_qp, num_query_points, num_fingers, num_finger_qf, qp_std_dev, index, device):
+def modify_demo_pose(
+    visualizer,
+    demo_dict,
+    load_state,
+    demo_poses,
+    joints_torch,
+    torques_torch,
+    is_finger_qp,
+    is_avg_qp,
+    num_query_points,
+    num_fingers,
+    num_finger_qf,
+    qp_std_dev,
+    index,
+    device
+    ):
     """Modify the selected demo pose using keyboard inputs."""
+
+    from pynput import keyboard
+
     pose = demo_poses.get_matrix().clone().transpose(1,2)
 
     print("\nUse WASD for XY translation, W/S (caps) for Z translation")
@@ -116,7 +133,8 @@ def modify_demo_pose(visualizer, demo_dict,load_state, demo_poses, joints_torch,
             demo_poses, 
             joints_torch, 
             torques_torch, 
-            is_finger_qp, 
+            is_finger_qp,
+            is_avg_qp, 
             num_query_points, 
             num_fingers, 
             num_finger_qf, 
@@ -177,6 +195,7 @@ def visualize_demos(
     demo_labels: List[str],
     demo_poses: Transform3d,
     demo_qps: Float[torch.Tensor, "d n 3"],
+    og_qps: Float[torch.Tensor, "d n 3"],
     demo_joints: np.ndarray,
     is_update_pcd: bool = True,
     is_update_qp: bool = True
@@ -208,6 +227,12 @@ def visualize_demos(
             qp_pcd.paint_uniform_color([1, 0, 0])
             visualizer.add_o3d_point_cloud(f"{label}/qp", qp_pcd, point_size=0.005)
 
+            og_qps_vis = pose.transform_points(og_qps)
+            og_qp_pcd = o3d.geometry.PointCloud()
+            og_qp_pcd.points = o3d.utility.Vector3dVector(og_qps_vis.cpu().numpy())
+            og_qp_pcd.paint_uniform_color([0, 1, 0])
+            visualizer.add_o3d_point_cloud(f"{label}/og", og_qp_pcd, point_size=0.005)
+
         # Coordinate frame for gripper pose
         if is_update_qp:
             pose_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.03)
@@ -218,34 +243,53 @@ def visualize_demos(
             for i, (name, tf) in enumerate(f3rm_tfs.items()):
                 pose_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.03)
                 pose_frame.transform(tf).transform(transform)
-                visualizer.add_o3d_mesh(f"{label}/{i}", pose_frame)
+                visualizer.add_o3d_mesh(f"{label}/f/{i}", pose_frame)
 
         # Gripper mesh
         gripper_mesh = o3d.geometry.TriangleMesh(base_gripper_mesh)
         gripper_mesh.transform(transform)
-        visualizer.add_o3d_mesh(f"{label}/gripper_mesh", gripper_mesh)
+        visualizer.add_o3d_mesh(f"{label}/mesh", gripper_mesh)
 
-def get_demo_qp(load_state, demo_poses, joints_torch, torques_torch, is_finger_qp, num_query_points, num_fingers, num_finger_qf, qp_std_dev, device):
+def get_demo_qp(
+        load_state, 
+        demo_poses, 
+        joints_torch, 
+        torques_torch, 
+        is_finger_qp,
+        is_avg_qp, 
+        num_query_points, 
+        num_fingers, 
+        num_finger_qf, 
+        qp_std_dev, 
+        device
+    ):
     # Sample query points and transform by demo poses. The optimization can be noisy depending on the sampling of the
     # query points, so you might want to try multiple different samples.
     joints_np = joints_torch.detach().cpu().numpy().reshape(-1,5,4)
 
+    tot_num_qp = int(num_query_points/(num_fingers * num_finger_qf + 1))
+    link_points = sample_query_points(tot_num_qp, mean=(0.0,0.0,0.0), std_dev=qp_std_dev)
+    # query_points_og = sample_query_points(num_query_points, mean=(0.025,0.0,0.0), std_dev=0.025) #could work for split joint optimization
+    query_points_og = get_query_frames_fk(np.zeros((5,4))).transform_points(link_points) #not useful for opt
+    query_points = torch.stack([get_query_frames_fk(joint).transform_points(link_points) for joint in joints_np])
+    n, j, q, d = query_points.shape
+    query_points = query_points.view(n, j * q, d) # n_demo, n_joints, n_query points, dim_query points
+
     if is_finger_qp:
-        tot_num_qp = int(num_query_points/(num_fingers * num_finger_qf + 1))
-        link_points = sample_query_points(tot_num_qp, mean=(0.0,0.0,0.0), std_dev=qp_std_dev)
-        query_points_og = get_query_frames_fk(np.zeros((5,4))).transform_points(link_points)
-        query_points = torch.stack([get_query_frames_fk(joint).transform_points(link_points) for joint in joints_np])
-        n, j, q, d = query_points.shape
-        query_points = query_points.view(n, j * q, d) # n_demo, n_joints, n_query points, dim_query points
         qp_transformed = demo_poses.transform_points(query_points)
         # TODO: investigate what is the effect of different query points in Task
-        # avg qp, 
-        # vs selecting one of them randomly, 
-        # vs using set of finger qp before fk, 
         # vs use og qp & finger qp separately
-        query_points = query_points_og.view(j * q, d)
-        # query_points = query_points.mean(dim=0) #better, results look similar to og qp approach, with some collisions, weird orientations, good prompts help
-        # query_points = query_points[random.randint(0, n-1)] #really bad, poses are not aligned with objects
+        if is_avg_qp:
+            query_points = query_points.mean(dim=0) #better, results look similar to og qp approach, with some collisions, weird orientations, good prompts help
+            # query_points = query_points[random.randint(0, n-1)] #really bad, poses are not aligned with objects
+        else:
+            query_points = query_points_og.view(j * q, d)
+
+    elif not is_finger_qp and is_avg_qp:
+        query_points = query_points.mean(dim=0)
+        link_points = None
+        qp_transformed = demo_poses.transform_points(query_points)
+
     else:
         query_points = sample_query_points(100, mean=(0.025,0.0,0.0), std_dev=0.025)
         link_points = None
@@ -270,7 +314,8 @@ def generate_task(
     viser_port: int,
     num_fingers: int = 5,
     num_finger_qf: int = 3,
-    is_finger_qp: bool = True,
+    is_finger_qp: bool = False,
+    is_avg_qp: bool = False,
     is_fix_demos: bool = False,
 ):
     """Generate Task for the given scene and demos."""
@@ -291,7 +336,8 @@ def generate_task(
         demo_poses, 
         joints_torch, 
         torques_torch, 
-        is_finger_qp, 
+        is_finger_qp,
+        is_avg_qp, 
         num_query_points, 
         num_fingers, 
         num_finger_qf, 
@@ -306,7 +352,8 @@ def generate_task(
             load_state, 
             demo_labels = demo_dict["demo_labels"], 
             demo_poses = demo_poses, 
-            demo_qps = qp_transformed, 
+            demo_qps = qp_transformed,
+            og_qps = query_points, 
             demo_joints = joints_np,
             is_update_qp = not is_fix_demos
         )
@@ -328,8 +375,11 @@ def generate_task(
             load_state,
             demo_poses,
             joints_torch,
-            torques_torch,is_finger_qp,
-            num_query_points,num_fingers,
+            torques_torch,
+            is_finger_qp,
+            is_avg_qp,
+            num_query_points,
+            num_fingers,
             num_finger_qf,
             qp_std_dev,
             index,
@@ -354,8 +404,12 @@ def generate_task(
     )
     print(f"Created task '{task.name}' with {task.num_demos} demos and {task.num_query_points} query points.")
     if save:
-        if is_finger_qp:
+        if is_finger_qp and not is_avg_qp:
             save_path = f"f3rm_robot/assets/hithand_tasks_og_fk/{task.name}.pt"
+        elif is_avg_qp and not is_finger_qp:
+            save_path = f"f3rm_robot/assets/hithand_tasks_avg_fk/{task.name}.pt"
+        elif is_avg_qp and is_finger_qp:
+            save_path = f"f3rm_robot/assets/hithand_tasks_og_fk_avg/{task.name}.pt"
         else:
             save_path = f"f3rm_robot/assets/hithand_tasks_og/{task.name}.pt"
         torch.save(task, save_path)
