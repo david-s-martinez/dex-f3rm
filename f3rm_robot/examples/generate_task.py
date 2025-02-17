@@ -269,8 +269,8 @@ def get_demo_qp(
 
     tot_num_qp = int(num_query_points/(num_fingers * num_finger_qf + 1))
     link_points = sample_query_points(tot_num_qp, mean=(0.0,0.0,0.0), std_dev=qp_std_dev)
-    # query_points_og = sample_query_points(num_query_points, mean=(0.025,0.0,0.0), std_dev=0.025) #could work for split joint optimization
-    query_points_og = get_query_frames_fk(np.zeros((5,4))).transform_points(link_points) #not useful for opt
+    query_points_og = sample_query_points(num_query_points, mean=(0.025,0.0,0.0), std_dev=0.025) #could work for split joint optimization
+    # query_points_og = get_query_frames_fk(np.zeros((5,4))).transform_points(link_points) #not useful for opt
     query_points = torch.stack([get_query_frames_fk(joint).transform_points(link_points) for joint in joints_np])
     n, j, q, d = query_points.shape
     query_points = query_points.view(n, j * q, d) # n_demo, n_joints, n_query points, dim_query points
@@ -291,16 +291,18 @@ def get_demo_qp(
         qp_transformed = demo_poses.transform_points(query_points)
 
     else:
-        query_points = sample_query_points(100, mean=(0.025,0.0,0.0), std_dev=0.025)
+        # query_points = sample_query_points(100, mean=(0.025,0.0,0.0), std_dev=0.025) #original f3rm
+        query_points = sample_query_points(num_query_points, mean=(0.025,0.0,0.0), std_dev=0.025)
         link_points = None
         qp_transformed = demo_poses.transform_points(query_points)
+    
     qp_transformed = qp_transformed.to(device)
 
     # Get features and density for each demo from feature field
     feature_field = load_state.feature_field_adapter()
     with torch.no_grad():
         outputs = feature_field(qp_transformed)
-        # Visualize the scene and demos if required
+        
     return outputs, query_points, qp_transformed, link_points, demo_poses, joints_torch, joints_np, torques_torch
 
 def generate_task(
@@ -345,6 +347,7 @@ def generate_task(
         device
     )
     outputs, query_points, qp_transformed, link_points, demo_poses, joints_torch, joints_np, torques_torch = result
+    # Visualize the scene and demos if required
     if not disable_visualize:
         visualizer = ViserVisualizer(host=viser_host, port=viser_port)
         visualize_demos(

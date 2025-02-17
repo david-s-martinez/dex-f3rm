@@ -10,7 +10,7 @@ class OptimizationArgs(ParamsProto, cli_parse=False):
 
     scene: str = Proto(help="Path to Nerfstudio scene config.yml file for the f3rm training run.")
     benchmarks: list = Proto([f"img_ycb_scene_{i}" for i in range(6)], help="Benchmark scenes.")
-    model_name: str = Proto("dex-f3rm_2025-02-15_194541", help="Benchmark scenes")
+    model_name: str = Proto("dex-f3rm-2stage_2025-02-17_194901", help="Benchmark scenes")
     benchmark_path: str = Proto("datasets/eyeinhand_nerf1", help="Path to bechmark folder.")
     benchmark_config: str = Proto("scene_benchmark_data_better.json", help="Path to bechmark config.")
     # benchmark_config: str = Proto("scene_benchmark_data.json", help="Path to bechmark config.")
@@ -27,6 +27,7 @@ class OptimizationArgs(ParamsProto, cli_parse=False):
     max_voxels: int = Proto(400, help="Max number of voxels after similarity with prompt.")
 
     # Optimization
+    is_split_joint_optim: bool = Proto(True, help="Whether to optimize joints in a second stage.")
     num_steps: int = Proto(200, help="Number of optimization steps to use.")
     lr_pose: float = Proto(2e-3, help="Learning rate to use for language-guided pose optimization.")
     lr_joints: float = Proto(2e-2, help="Learning rate to use for language-guided joint optimization.")

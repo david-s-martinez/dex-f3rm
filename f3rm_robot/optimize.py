@@ -71,7 +71,7 @@ def compute_task_embedding(task: Task) -> Float[torch.Tensor, "num_qps num_chann
 
 
 def retrieve_task(
-    query: str, clip_model: CLIP, device: torch.device, is_use_grasp_prompt: bool = True
+    query: str, clip_model: CLIP, device: torch.device, tasks_folder: str, is_use_grasp_prompt: bool = True
 ) -> Tuple[Task, Float[torch.Tensor, "num_qps num_channels"], Float[torch.Tensor, "1 num_channels"]]:
     """
     Retrieve the most relevant task for a given query. Returns the Task, task embedding, and query embedding.
@@ -93,10 +93,10 @@ def retrieve_task(
                 primitive_sims[grasp_description] = prim_query_sim
         most_sim_grasp = max(primitive_sims, key=primitive_sims.get)        
         print(f"Found most similar grasp type {most_sim_grasp}: {grasp_primitives_dict[most_sim_grasp]}")
-        tasks = get_tasks(grasp_primitives_dict[most_sim_grasp], tasks_folder = args.tasks_folder)
+        tasks = get_tasks(grasp_primitives_dict[most_sim_grasp], tasks_folder = tasks_folder)
     else:
         # Compute mean embedding for each task, and compare to the query
-        tasks = get_tasks(tasks_folder = args.tasks_folder)
+        tasks = get_tasks(tasks_folder = tasks_folder)
     task_embs = torch.stack([compute_task_embedding(t) for t in tasks]).to(device)
     mean_task_embs = task_embs.mean(dim=1)
     task_sims = torch.cosine_similarity(query_emb, mean_task_embs)
@@ -243,9 +243,12 @@ def language_pose_optimization(
     clip_model: CLIP, 
     query: str, 
     device: torch.device,
+    pre_results: dict = {},
     num_links: int = 3,
     num_fingers: int = 5,
-    is_qp_fk: bool = True,
+    is_optim_joints_2nd_stage: bool = False,
+    is_filter_coll: bool = True,
+    is_optimize_joints: bool = True,
     is_init_coll_joint_check : bool = False,
     is_zero_init: bool = False,
     is_show_hand_opt: bool = True,
@@ -253,6 +256,7 @@ def language_pose_optimization(
     is_optim_less_joints: bool = True,
     is_use_grasp_prompt: bool = True,
     is_output_less: bool = False,
+    tasks_folder: str = args.tasks_folder
 
 ) -> Dict[str, Any]:
     """
@@ -260,9 +264,14 @@ def language_pose_optimization(
     """
     metrics = {"query": query}
 
+    if is_optim_joints_2nd_stage:
+        is_filter_coll = False
+        is_optimize_joints = True
+        is_optim_less_joints = True
     # Retrieve the relevant task for the query, and compute the task embedding
-    task, task_emb, query_emb = retrieve_task(query, clip_model, device, is_use_grasp_prompt)
+    task, task_emb, query_emb = retrieve_task(query, clip_model, device, tasks_folder, is_use_grasp_prompt)
     task_emb = task_emb.reshape(-1)  # [num_qps * num_channels]
+    
     query_points = task.query_points.to(device)
 
     if hasattr(task, 'link_points'):
@@ -271,7 +280,7 @@ def language_pose_optimization(
         is_og_f3rm = True
 
     if is_og_f3rm:
-        is_qp_fk = False
+        is_optimize_joints = False
         is_zero_init = True
         is_init_coll_joint_check = False
         args.num_steps = 200
@@ -280,42 +289,7 @@ def language_pose_optimization(
     print(f'Matched "{query}" to task {task.name}.')
     metrics["retrieved_task"] = task.name
 
-    # Get coarse voxel grid proposals using alpha and language-masking.
-    voxel_grid, voxel_sims, metrics["num_voxels"] = get_initial_voxel_grid(feature_field, query, clip_model, device)
-
-    # Sample rotations for each voxel to get the initial 6-DOF proposals. We parametrize rotations as quaternions and
-    # multiply by a scale factor so the scale is more reasonable for optimization. You can tune this to your liking.
-    translations = voxel_grid.repeat_interleave(args.num_rots_per_voxel, dim=0)
-    rotations = random_quaternions(len(translations), device=device)
-
-    # use selected demo joint values / preshape to initialize.
-    if is_og_f3rm:
-        joint_demo = torch.zeros(len(translations), num_links*num_fingers, device = device)
-    else:
-        joint_demo = get_preshape(task, len(translations), device, num_links, num_fingers)
-    
-    if is_zero_init:
-        joints_pre = torch.zeros(len(translations), num_links*num_fingers, device = device)
-    else:
-        min_rad = -0.2
-        max_rad = 0.1
-        joints_init = torch.FloatTensor(len(translations), num_links*num_fingers).uniform_(min_rad, max_rad).to(device = device)
-        joints_pre = joint_demo + joints_init
-        # joints_pre = torch.rand(len(translations), num_links*num_fingers, device = device)*0.8
-
-    joints_pre[:, ::num_links] = joint_demo[:, ::num_links]
-    # joints_pre[:, ::num_links] = 0
-    
-    if is_optim_less_joints:
-        joints = joints_pre.reshape(-1, num_fingers, num_links)[:,:,1:].reshape(-1, (num_links*num_fingers) - num_fingers)
-        base_joints = joints_pre.reshape(-1, num_fingers, num_links)[:,:,0]
-    else:
-        joints = joints_pre
-    joints = torch.clamp(joints, 0.0, 1.57)
     rot_scale = 0.1
-    rotations = rotations * rot_scale
-    metrics["num_proposals"] = {"initial": len(translations)}
-
     def get_rotation_mats(rotations_):
         """Convert quaternions back into rotation matrices."""
         # Normalize the quaternions so they're unit and valid rotations
@@ -328,42 +302,102 @@ def language_pose_optimization(
         # We need to transpose because Transform3d uses row vector rather than column vector convention
         return Transform3d(device=device).rotate(rotation_mats_.transpose(1, 2)).translate(translations_)
 
-    # Remove initial grasps in collision. We did not optimize our collision checking, so it is a bit slow.
-    grasps_to_world = get_grasps_to_world(translations, rotations)
-    print(f'Checking initial collisions for {grasps_to_world.get_matrix().size()}')
-    with torch.no_grad():
-        if is_init_coll_joint_check:
-            if is_optim_less_joints:
+    if is_optim_joints_2nd_stage:
+        # Load data from previous session
+        translations = pre_results["translations"]
+        rotations = pre_results["rotations"]
+        grasps_to_world = pre_results["grasps_to_world"]
+        voxel_sims = pre_results["voxel_sims"]
+        metrics["num_proposals"] = {"initial": len(translations)}
+    else:
+        # Get coarse voxel grid proposals using alpha and language-masking.
+        voxel_grid, voxel_sims, metrics["num_voxels"] = get_initial_voxel_grid(feature_field, query, clip_model, device)
+
+        # Sample rotations for each voxel to get the initial 6-DOF proposals. We parametrize rotations as quaternions and
+        # multiply by a scale factor so the scale is more reasonable for optimization. You can tune this to your liking.
+        translations = voxel_grid.repeat_interleave(args.num_rots_per_voxel, dim=0)
+        rotations = random_quaternions(len(translations), device=device)
+        rotations = rotations * rot_scale
+        metrics["num_proposals"] = {"initial": len(translations)}
+
+        # Remove initial grasps in collision. We did not optimize our collision checking, so it is a bit slow.
+        grasps_to_world = get_grasps_to_world(translations, rotations)
+    
+    num_init_proposals = len(grasps_to_world)
+
+    # Joint Initialization
+    # use selected demo joint values / preshape to initialize.
+    # Define Demo
+    if is_optimize_joints:
+        joint_demo = get_preshape(task, num_init_proposals, device, num_links, num_fingers)
+    else:
+        joint_demo = torch.zeros(num_init_proposals, num_links*num_fingers, device = device)
+    
+    # Define Preshape
+    if is_zero_init:
+        joints_pre = torch.zeros(num_init_proposals, num_links*num_fingers, device = device)
+    else:
+        min_rad = -0.2
+        max_rad = 0.1
+        joints_init = torch.FloatTensor(num_init_proposals, num_links*num_fingers).uniform_(min_rad, max_rad).to(device = device)
+        joints_pre = joint_demo + joints_init
+        # joints_pre = torch.rand(num_init_proposals, num_links*num_fingers, device = device)*0.8
+
+    joints_pre[:, ::num_links] = joint_demo[:, ::num_links]
+    # joints_pre[:, ::num_links] = 0
+    
+    if is_optim_less_joints:
+        joints = joints_pre.reshape(-1, num_fingers, num_links)[:,:,1:].reshape(-1, (num_links*num_fingers) - num_fingers)
+        base_joints = joints_pre.reshape(-1, num_fingers, num_links)[:,:,0]
+    else:
+        joints = joints_pre
+    joints = torch.clamp(joints, 0.0, 1.57)
+
+    # Filter Initial Collisions
+    if is_filter_coll:
+        print(f'Checking initial collisions for {grasps_to_world.get_matrix().size()}')
+        with torch.no_grad():
+            if is_init_coll_joint_check and is_optim_less_joints:
                 joints_complete = get_complete_joints(base_joints, joints, num_links, num_fingers)
                 collision_detected = has_collision(feature_field, grasps_to_world, joints_complete)
-            else:
+
+            elif is_init_coll_joint_check and not is_optim_less_joints:
                 collision_detected = has_collision(feature_field, grasps_to_world, joints)
-        else:
-            collision_detected = has_collision(feature_field, grasps_to_world, None)
-            
-    translations = translations[~collision_detected]
-    rotations = rotations[~collision_detected]
-    joints = joints[~collision_detected]
-    if is_optim_less_joints:
-        base_joints = base_joints[~collision_detected]
+
+            elif not is_init_coll_joint_check:
+                collision_detected = has_collision(feature_field, grasps_to_world, None)
+    
+        translations = translations[~collision_detected]
+        rotations = rotations[~collision_detected]
+        joints = joints[~collision_detected]
+        if is_optim_less_joints:
+            base_joints = base_joints[~collision_detected]
 
     metrics["num_proposals"]["initial_cfree"] = len(translations)
     print(f"Number of 6-DOF proposals: {len(translations)}.")
     print('Done checking initial collisions')
 
-    # Shuffle the remaining proposals
-    permutation = torch.randperm(len(translations), device=device)
-    translations = translations[permutation]
-    rotations = rotations[permutation]
-    joints = joints[permutation]
-    if is_optim_less_joints:
-        base_joints = base_joints[permutation]
-    # Setup optimizer
-    translations.requires_grad_()
-    rotations.requires_grad_()
-    joints.requires_grad_()
-    optimizer = torch.optim.Adam([translations, rotations], lr=args.lr_pose)
-    joints_optimizer = torch.optim.Adam([joints], lr=args.lr_joints)
+    # Setup optimizers
+    if is_optim_joints_2nd_stage:
+        # Do not optimize translations and rotations
+        translations.detach()
+        rotations.detach()
+    else:
+        # Shuffle the remaining proposals
+        permutation = torch.randperm(len(translations), device=device)
+        translations = translations[permutation]
+        rotations = rotations[permutation]
+        joints = joints[permutation]
+        if is_optim_less_joints:
+            base_joints = base_joints[permutation]
+        # Set optimizer for translations and rotations
+        translations.requires_grad_()
+        rotations.requires_grad_()
+        pose_optimizer = torch.optim.Adam([translations, rotations], lr=args.lr_pose)
+    
+    if is_optimize_joints:
+        joints.requires_grad_()
+        joints_optimizer = torch.optim.Adam([joints], lr=args.lr_joints)
     pose_loss_fn = torch.nn.CosineSimilarity()
     language_guidance_fn = get_language_guidance_fn(voxel_sims, query_emb)
     batch_size = args.ray_samples_per_batch // len(query_points)
@@ -371,8 +405,12 @@ def language_pose_optimization(
 
     # Now we can optimize!
     for step in tqdm(range(args.num_steps), desc=f'Optimizing poses for "{query}"'):
-        optimizer.zero_grad()
-        joints_optimizer.zero_grad()
+
+        if not is_optim_joints_2nd_stage:
+            pose_optimizer.zero_grad()
+        if is_optimize_joints:
+            joints_optimizer.zero_grad()
+
         all_grasps_to_world = []
         all_joints = []
         step_losses = []
@@ -400,12 +438,12 @@ def language_pose_optimization(
             else:
                 all_joints.append(batch_joints)
 
-            if is_qp_fk and is_optim_less_joints:
+            if is_optimize_joints and is_optim_less_joints:
                 batch_joints_complete = get_complete_joints(batch_base_joints, batch_joints, num_links, num_fingers)
                 f3rm_fk_tf = get_query_frames_fk_torch(batch_joints_complete.reshape(-1,num_fingers,4))
-            elif is_qp_fk:
+            elif is_optimize_joints:
                 f3rm_fk_tf = get_query_frames_fk_torch(batch_joints.reshape(-1,num_fingers,4))
-            if is_qp_fk:
+            if is_optimize_joints:
                 b, j, c, r = f3rm_fk_tf.shape # batch_size, n_joints, tf_column, tf_row
                 f3rm_frames = Transform3d(matrix=f3rm_fk_tf.reshape(b * j, c, r))
                 query_points = f3rm_frames.transform_points(link_points).reshape(b, j * link_points.shape[0], link_points.shape[1])
@@ -419,14 +457,16 @@ def language_pose_optimization(
             lang_guidance = language_guidance_fn(qp_feats)
             batch_losses = lang_guidance * pose_loss
             loss = batch_losses.mean()
-            loss.backward()
+            loss.backward(retain_graph=True)
             step_losses.append(batch_losses.detach())
 
         # Optimizer step
-        optimizer.step()
-        joints_optimizer.step()
-        with torch.no_grad():
-            joints.copy_(torch.clamp(joints, 0, 1.57))
+        if not is_optim_joints_2nd_stage:
+            pose_optimizer.step()
+        if is_optimize_joints:
+            joints_optimizer.step()
+            with torch.no_grad():
+                joints.copy_(torch.clamp(joints, 0, 1.57))
         step_losses = torch.cat(step_losses)
 
         # Visualize top poses. Note this does not take into account collisions.
@@ -459,41 +499,65 @@ def language_pose_optimization(
             joints = joints[best_indices].detach().clone()
             if is_optim_less_joints:
                 base_joints = base_joints[best_indices].detach().clone()
-            # Need to set up optimizer again
-            translations.requires_grad_()
-            rotations.requires_grad_()
-            joints.requires_grad_()
-            optimizer = torch.optim.Adam([translations, rotations], lr=args.lr_pose)
-            joints_optimizer = torch.optim.Adam([joints], lr=args.lr_joints)
+            # Need to set up pose_optimizer again
+            if is_optim_joints_2nd_stage:
+                translations.detach()
+                rotations.detach()
+            else:
+                translations.requires_grad_()
+                rotations.requires_grad_()
+                pose_optimizer = torch.optim.Adam([translations, rotations], lr=args.lr_pose)
+            
+            if is_optimize_joints:
+                joints.requires_grad_()
+                joints_optimizer = torch.optim.Adam([joints], lr=args.lr_joints)
+            
             metrics["num_proposals"][f"pruned_step_{step:04d}"] = new_num_proposals
 
     # Optimization finished, check remaining grasps for collisions
     grasps_to_world = get_grasps_to_world(translations, rotations)
-    print(f'Checking final collisions for {grasps_to_world.get_matrix().size()}')
-    with torch.no_grad():
-        if is_optim_less_joints:
-            joints = get_complete_joints(base_joints, joints, num_links, num_fingers)
+    if is_optim_less_joints:
+        joints = get_complete_joints(base_joints, joints, num_links, num_fingers)
+    
+    if is_filter_coll:
+        print(f'Checking final collisions for {grasps_to_world.get_matrix().size()}')
+        with torch.no_grad():
             collision_detected = has_collision(feature_field, grasps_to_world, joints, is_final=True)
-        else:
-            collision_detected = has_collision(feature_field, grasps_to_world, joints, is_final=True)
-        # collision_detected = has_collision(feature_field, grasps_to_world, None, is_final=True)
-    print(f"Removed {collision_detected.sum()} of {len(grasps_to_world)} optimized proposals in collision")
-    grasps_to_world = grasps_to_world[~collision_detected]
-    joints = joints[~collision_detected]
-    print(f'Final number of 6-DOF proposals for "{query}": {len(grasps_to_world)}')
-    metrics["num_proposals"]["final_cfree"] = len(grasps_to_world)
-    print('Done checking final collisions.')
-    # Sort the grasps by their losses before returning
-    masked_losses = step_losses[~collision_detected]
-    sorted_losses, sorted_indices = masked_losses.sort(descending=False)
+            # collision_detected = has_collision(feature_field, grasps_to_world, None, is_final=True)
+        print(f"Removed {collision_detected.sum()} of {len(grasps_to_world)} optimized proposals in collision")
+        grasps_to_world = grasps_to_world[~collision_detected]
+        joints = joints[~collision_detected]
+        translations = translations[~collision_detected]
+        rotations = rotations[~collision_detected]
+        # Sort the grasps by their losses before returning
+        step_losses = step_losses[~collision_detected]
+        if is_output_less:
+            num_outs = args.num_outs
+            num_outs = min(num_outs, len(joints))
+            joints = joints[:num_outs]
+            grasps_to_world = grasps_to_world[:num_outs]
+            translations = translations[:num_outs]
+            rotations = rotations[:num_outs]
+        print('Done checking final collisions.')
+    
+    sorted_losses, sorted_indices = step_losses.sort(descending=False)
     grasps_to_world = grasps_to_world[sorted_indices]
     joints = joints[sorted_indices]
-    if is_output_less:
-        num_outs = args.num_outs
-        num_outs = min(num_outs, len(joints))
-        joints = joints[:num_outs]
-        grasps_to_world = grasps_to_world[:num_outs]
-    results = {"grasps_to_world": grasps_to_world, "joints": joints ,"metrics": metrics}
+    translations = translations[sorted_indices]
+    rotations = rotations[sorted_indices]
+    metrics["num_proposals"]["final_cfree"] = len(grasps_to_world)
+    print(f'Final number of 6-DOF proposals for "{query}": {len(grasps_to_world)}')
+    results = {
+        "grasps_to_world": grasps_to_world,
+        "translations": translations,
+        "rotations": rotations,
+        "joints": joints,
+        "metrics": metrics,
+        "task": task,
+        "task_emb": task_emb,
+        "query_emb": query_emb,
+        "voxel_sims": voxel_sims
+    }
     # Show the best grasps without collisions
     if args.visualize:
         best_losses = sorted_losses[: args.num_poses_to_visualize]
@@ -591,7 +655,40 @@ def entrypoint():
 
         # Optimize for the query!
         try:
-            results = language_pose_optimization(feature_field, clip_model, query, device, is_show_hand_opt=not is_benchmark, is_use_grasp_prompt=args.is_use_grasp_prompt, is_output_less = is_benchmark)
+            if args.is_split_joint_optim:
+                results = language_pose_optimization(
+                    feature_field, 
+                    clip_model,
+                    query,
+                    device,
+                    is_optimize_joints = False,
+                    is_show_hand_opt=not is_benchmark,
+                    is_use_grasp_prompt=args.is_use_grasp_prompt,
+                    tasks_folder = "hithand_tasks_og"
+                )
+                results = language_pose_optimization(
+                    feature_field, 
+                    clip_model,
+                    query,
+                    device,
+                    pre_results=results,
+                    is_optim_joints_2nd_stage = True,
+                    is_show_hand_opt=not is_benchmark,
+                    is_use_grasp_prompt=args.is_use_grasp_prompt,
+                    is_output_less = is_benchmark,
+                    tasks_folder = "hithand_tasks_og_fk"
+                )
+            else:
+                results = language_pose_optimization(
+                    feature_field, 
+                    clip_model,
+                    query,
+                    device,
+                    is_show_hand_opt=not is_benchmark,
+                    is_use_grasp_prompt=args.is_use_grasp_prompt,
+                    is_output_less = is_benchmark
+                )
+    
         except NoProposalsError as e:
             # Print error message
             print(e)
