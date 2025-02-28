@@ -216,7 +216,7 @@ def visualize_demos(
         joints = [np.zeros((5,4)) for demo in demo_joints]
 
     for label, qps, pose, joint in zip(demo_labels, demo_qps, demo_poses, joints):
-        base_gripper_mesh, f3rm_tfs = get_hithand_gripper_mesh(np.array(joint), is_use_coll_mesh = True, is_get_tf_dict = True)
+        base_gripper_mesh, f3rm_tfs = get_hithand_gripper_mesh(np.array(joint), is_use_coll_mesh = False, is_get_tf_dict = True)
         base_gripper_mesh.compute_vertex_normals()
         # Transformation matrix, need to transpose Transform3d matrix as it uses row vectors
         transform = pose.get_matrix()[0].T
@@ -224,14 +224,14 @@ def visualize_demos(
             # Transformed query points
             qp_pcd = o3d.geometry.PointCloud()
             qp_pcd.points = o3d.utility.Vector3dVector(qps.cpu().numpy())
-            qp_pcd.paint_uniform_color([1, 0, 0])
-            visualizer.add_o3d_point_cloud(f"{label}/qp", qp_pcd, point_size=0.005)
+            qp_pcd.paint_uniform_color([1, 0, 1])
+            visualizer.add_o3d_point_cloud(f"{label}/qp", qp_pcd, point_size=0.0025)
 
             og_qps_vis = pose.transform_points(og_qps)
             og_qp_pcd = o3d.geometry.PointCloud()
             og_qp_pcd.points = o3d.utility.Vector3dVector(og_qps_vis.cpu().numpy())
             og_qp_pcd.paint_uniform_color([0, 1, 0])
-            visualizer.add_o3d_point_cloud(f"{label}/og", og_qp_pcd, point_size=0.005)
+            visualizer.add_o3d_point_cloud(f"{label}/og", og_qp_pcd, point_size=0.0025)
 
         # Coordinate frame for gripper pose
         if is_update_qp:
@@ -241,7 +241,7 @@ def visualize_demos(
         if is_update_qp:
             # Coordinate frame for fingers pose
             for i, (name, tf) in enumerate(f3rm_tfs.items()):
-                pose_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.03)
+                pose_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.015)
                 pose_frame.transform(tf).transform(transform)
                 visualizer.add_o3d_mesh(f"{label}/f/{i}", pose_frame)
 
@@ -291,8 +291,8 @@ def get_demo_qp(
         qp_transformed = demo_poses.transform_points(query_points)
 
     else:
-        # query_points = sample_query_points(100, mean=(0.025,0.0,0.0), std_dev=0.025) #original f3rm
-        query_points = sample_query_points(num_query_points, mean=(0.025,0.0,0.0), std_dev=0.025)
+        query_points = sample_query_points(100, mean=(0.025,0.0,0.0), std_dev=0.025) #original f3rm
+        # query_points = sample_query_points(num_query_points, mean=(0.025,0.0,0.0), std_dev=0.025)
         link_points = None
         qp_transformed = demo_poses.transform_points(query_points)
     
@@ -316,7 +316,7 @@ def generate_task(
     viser_port: int,
     num_fingers: int = 5,
     num_finger_qf: int = 3,
-    is_finger_qp: bool = False,
+    is_finger_qp: bool = True,
     is_avg_qp: bool = False,
     is_fix_demos: bool = False,
 ):

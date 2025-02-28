@@ -1,0 +1,54 @@
+hierarchical matching
+prompt,demo
+tomato soup can lid,peach
+black trigger from drill handle,gray_sweep_handle
+frenchs sauce,crackers_box
+brown jello chocolate pudding,crackers_box
+black spatula handle for holding,gray_sweep_handle
+yellow dominos sugar box,crackers_box
+cylindrical orange drill head,white_mug_body
+hammer long wooden shaft,gray_sweep_handle
+red foam brick,crackers_box
+cyllindrical tomato soup can from cambells,white_mug_body
+box of chocolate jello powder,crackers_box
+mug lip,beige_bowl
+frenchs plastic bottle,white_mug_body
+purple plum,crackers_box
+red strawberry with green leaf,peach
+spam,crackers_box
+
+all matching
+tomato soup can lid,mentos
+black trigger from drill handle,black_foam_cube
+frenchs sauce,mentos
+brown jello chocolate pudding,crackers_box
+black spatula handle for holding,gray_sweep_handle
+yellow dominos sugar box,rubiks_cube
+cylindrical orange drill head,peach
+hammer long wooden shaft,gray_sweep_handle
+red foam brick,black_foam_cube
+cyllindrical tomato soup can from cambells,white_mug_body
+box of chocolate jello powder,black_foam_cube
+mug lip,white_mug_handle
+frenchs plastic bottle,mentos
+purple plum,peach
+red strawberry with green leaf,peach
+spam,crackers_box
+
+grasp prompt matching
+tomato soup can lid tripod,mentos
+black trigger from drill handle hook grasp,gray_sweep_handle
+frenchs sauce cylindrical grasp,white_mug_body
+brown jello chocolate pudding lumbrical grasp,crackers_box
+black spatula handle for holding hook grasp,gray_sweep_handle
+yellow dominos sugar box cylindrical grasp,white_mug_body
+cylindrical orange drill head cylindrical grasp,white_mug_body
+hammer long wooden shaft hook grasp,gray_sweep_handle
+red foam brick tripod grasp,rubiks_cube
+cyllindrical tomato soup can from cambells cylindrical grasp,white_mug_body
+box of chocolate jello powder tripod grasp,mentos
+mug lip lumbrical grasp,beige_bowl
+frenchs plastic bottle lumbrical grasp,crackers_box
+purple plum pinch grasp,peach
+red strawberry with green leaf pinch grasp,peach
+spam lumbrical grasp,crackers_box

@@ -10,9 +10,11 @@ class OptimizationArgs(ParamsProto, cli_parse=False):
 
     scene: str = Proto(help="Path to Nerfstudio scene config.yml file for the f3rm training run.")
     benchmarks: list = Proto([f"img_ycb_scene_{i}" for i in range(6)], help="Benchmark scenes.")
-    model_name: str = Proto("dex-f3rm-2stage_2025-02-17_194901", help="Benchmark scenes")
+    model_name: str = Proto("og-f3rm-paper_2025-02-27_150214", help="Benchmark scenes")
     benchmark_path: str = Proto("datasets/eyeinhand_nerf1", help="Path to bechmark folder.")
     benchmark_config: str = Proto("scene_benchmark_data_better.json", help="Path to bechmark config.")
+    is_prompt_match_bench: bool = Proto(False, help="Whether to run benchmark for prompts")
+    
     # benchmark_config: str = Proto("scene_benchmark_data.json", help="Path to bechmark config.")
     # Initial proposals
     tasks_folder: str = Proto("hithand_tasks_og_fk", help="Name of tasks folder.")
@@ -63,7 +65,7 @@ class CollisionArgs(PrefixProto, cli_parse=False):
         0.0075,
         help="Voxel size to voxelize the Panda gripper. You may need to adjust alpha if you change this.",
     )
-    overlap_num: int = Proto(2, help="Number of intitial overlapping points to be considered a collision.")
+    overlap_num: int = Proto(10, help="Number of intitial overlapping points to be considered a collision.")
     overlap_num_final: int = Proto(10, help="Number of final overlapping points to be considered a collision.")
 
     allow_finger_collisions: bool = Proto(

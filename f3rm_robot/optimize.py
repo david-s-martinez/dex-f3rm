@@ -256,6 +256,7 @@ def language_pose_optimization(
     is_optim_less_joints: bool = True,
     is_use_grasp_prompt: bool = True,
     is_output_less: bool = False,
+    is_prompt_match_bench: bool = args.is_prompt_match_bench,
     tasks_folder: str = args.tasks_folder
 
 ) -> Dict[str, Any]:
@@ -288,7 +289,10 @@ def language_pose_optimization(
         link_points = task.link_points.to(device)
     print(f'Matched "{query}" to task {task.name}.')
     metrics["retrieved_task"] = task.name
-
+    if is_prompt_match_bench:
+        with open('matching.csv','a') as f:
+            f.write(f"\n{query},{task.name}")
+        raise NoProposalsError
     rot_scale = 0.1
     def get_rotation_mats(rotations_):
         """Convert quaternions back into rotation matrices."""
@@ -531,13 +535,6 @@ def language_pose_optimization(
         rotations = rotations[~collision_detected]
         # Sort the grasps by their losses before returning
         step_losses = step_losses[~collision_detected]
-        if is_output_less:
-            num_outs = args.num_outs
-            num_outs = min(num_outs, len(joints))
-            joints = joints[:num_outs]
-            grasps_to_world = grasps_to_world[:num_outs]
-            translations = translations[:num_outs]
-            rotations = rotations[:num_outs]
         print('Done checking final collisions.')
     
     sorted_losses, sorted_indices = step_losses.sort(descending=False)
@@ -545,6 +542,16 @@ def language_pose_optimization(
     joints = joints[sorted_indices]
     translations = translations[sorted_indices]
     rotations = rotations[sorted_indices]
+    
+    # Reduce number of out puts for bechnmark
+    if is_output_less:
+        num_outs = args.num_outs
+        num_outs = min(num_outs, len(joints))
+        joints = joints[:num_outs]
+        grasps_to_world = grasps_to_world[:num_outs]
+        translations = translations[:num_outs]
+        rotations = rotations[:num_outs]
+
     metrics["num_proposals"]["final_cfree"] = len(grasps_to_world)
     print(f'Final number of 6-DOF proposals for "{query}": {len(grasps_to_world)}')
     results = {
