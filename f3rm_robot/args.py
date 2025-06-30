@@ -10,7 +10,7 @@ class OptimizationArgs(ParamsProto, cli_parse=False):
 
     scene: str = Proto(help="Path to Nerfstudio scene config.yml file for the f3rm training run.")
     benchmarks: list = Proto([f"img_ycb_scene_{i}" for i in range(6)], help="Benchmark scenes.")
-    model_name: str = Proto("og-f3rm-paper_2025-02-27_150214", help="Benchmark scenes")
+    model_name: str = Proto("dex-f3rm-2-stage-rand-init_2025-03-08_165443", help="Benchmark scenes")
     benchmark_path: str = Proto("datasets/eyeinhand_nerf1", help="Path to bechmark folder.")
     benchmark_config: str = Proto("scene_benchmark_data_better.json", help="Path to bechmark config.")
     is_prompt_match_bench: bool = Proto(False, help="Whether to run benchmark for prompts")

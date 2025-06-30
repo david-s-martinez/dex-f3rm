@@ -28,7 +28,7 @@ from f3rm_robot.initial_proposals import (
     voxel_downsample,
 )
 from f3rm_robot.load import LoadState, load_nerfstudio_outputs
-from f3rm_robot.task import Task, get_tasks, grasp_primitives_dict
+from f3rm_robot.task import Task, get_tasks, grasp_primitives_dict, plot_embeddings_3d, plot_cosine_similarity, plot_embeddings_2d
 from f3rm_robot.utils import get_gripper_meshes, get_hand_meshes, get_heatmap, sample_point_cloud
 from f3rm_robot.visualizer import BaseVisualizer, ViserVisualizer
 from f3rm_robot.assets import get_query_frames_fk, get_query_frames_fk_torch
@@ -85,15 +85,25 @@ def retrieve_task(
         with torch.no_grad():
             grasp_descriptions = list(grasp_primitives_dict.keys())
             primitive_sims = {}
+            primitive_embs = []
             for i, grasp_description in enumerate(grasp_descriptions):
                 grasp_tokens = tokenize(grasp_description).to(device)
                 grasp_query_emb = clip_model.encode_text(grasp_tokens)
                 grasp_query_emb /= grasp_query_emb.norm(dim=-1, keepdim=True)
+                primitive_embs.append(grasp_query_emb)
                 prim_query_sim = torch.cosine_similarity(query_emb, grasp_query_emb)
                 primitive_sims[grasp_description] = prim_query_sim
         most_sim_grasp = max(primitive_sims, key=primitive_sims.get)        
         print(f"Found most similar grasp type {most_sim_grasp}: {grasp_primitives_dict[most_sim_grasp]}")
         tasks = get_tasks(grasp_primitives_dict[most_sim_grasp], tasks_folder = tasks_folder)
+        if args.is_prompt_match_bench:
+            # plot_embeddings_3d(query_emb, torch.stack(primitive_embs), [grasp_descriptions[i].split()[:1][0] for i in range(len(primitive_embs))], 
+            #        f"Query {query} vs Grasp Descriptions", f"datasets/eyeinhand_nerf1/benchmark/plots/{query}_vs_grasps.png")
+            # plot_embeddings_2d(query_emb, torch.stack(primitive_embs), [grasp_descriptions[i].split()[:1][0] for i in range(len(primitive_embs))], 
+            #       f"Query {query} vs Grasp Descriptions", f"datasets/eyeinhand_nerf1/benchmark/plots/{query}_vs_grasps.png")
+            
+            plot_cosine_similarity(query_emb.squeeze(0), torch.stack(primitive_embs), [grasp_descriptions[i].split()[:1][0] for i in range(len(primitive_embs))], 
+                   f"Query {query} vs Grasp Descriptions", f"datasets/eyeinhand_nerf1/benchmark/plots/{query}_vs_grasps_cosin.png")
     else:
         # Compute mean embedding for each task, and compare to the query
         tasks = get_tasks(tasks_folder = tasks_folder)
