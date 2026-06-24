@@ -1,71 +1,132 @@
-# Distilled Feature Fields Enable Few-Shot Language-Guided Manipulation
+# Dex-F3RM: Neural Feature Fields for Language-based Dexterous Robotic Manipulation
 
-### [🌐 Project Website](https://f3rm.github.io) | [📝 Paper](https://arxiv.org/abs/2308.07931) | [🎥 Video](https://www.youtube.com/watch?v=PA9rWWVWsc4)
+**Dex-F3RM** is a system for **dexterous grasping of unseen objects guided by open-text language
+instructions**. It extends [F3RM](https://f3rm.github.io) (Feature Fields for Robotic Manipulation) from
+parallel-jaw grippers to a 15-DOF anthropomorphic hand by distilling CLIP features into a 3D feature field and
+representing each grasp with *per-link* local feature fields. Grasps are inferred few-shot from human
+demonstrations and refined with a two-stage, language-guided optimization of both the 6-DOF palm pose and the
+finger joint configuration.
 
-**F3RM:** Feature Fields for Robotic Manipulation
+> M.Sc. Thesis — [*Neural Feature Fields for Language-based Dexterous Robotic Manipulation*](https://doi.org/10.13140/RG.2.2.16378.04809)
+> ([DOI: 10.13140/RG.2.2.16378.04809](https://doi.org/10.13140/RG.2.2.16378.04809))<br>
+> **David Sebastian Martinez Lema** · Technical University of Munich (TUM), School of Computation, Information and
+> Technology · M.Sc. Neuroengineering<br>
+> Examiner: Prof. Alois Knoll · Supervisor: M.Sc. Qian Feng · Submitted 10.03.2025
 
-We distill features from 2D foundation models into 3D feature fields, and enable few-shot language-guided manipulation
-that generalizes across object poses, shapes, appearances and categories.
-
-**[William Shen](https://shen.nz)<sup>\*1</sup>, [Ge Yang](https://www.episodeyang.com/)<sup>\*1,2</sup>,
-[Alan Yu](https://www.linkedin.com/in/alan-yu1/)<sup>1</sup>,
-[Jansen Wong](https://www.linkedin.com/in/jansenwong/)<sup>1</sup>,
-[Leslie Kaelbling](https://people.csail.mit.edu/lpk/)<sup>1</sup>,
-[Phillip Isola](https://people.csail.mit.edu/phillipi/)<sup>1</sup>**<br>
-<sup>1 </sup>[MIT CSAIL](https://www.csail.mit.edu/),
-<sup>2 </sup>[Institute of AI and Fundamental Interactions (IAIFI)](https://iaifi.org/)<br>
-<sup>* </sup>Indicates equal contribution<br>
-CoRL 2023 (Oral)
+[<img src="assets/images/f3rm_robot/optimize.gif" width="640" alt="Language-Guided Dexterous Grasp Optimization">](f3rm_robot/README.md)
 
 -----
 
-**Table of Contents**
+## Highlights
 
-- [Installation](#installation)
-- [Usage](#usage)
-    - [Downloading Example Datasets](#downloading-example-datasets)
-    - [Training a Feature Field](#training-a-feature-field)
-    - [Using our Custom Viewer](#using-our-custom-viewer)
-    - [Using the Nerfstudio Viewer](#using-the-nerfstudio-viewer)
-    - [Extracting CLIP and DINO Features](#extracting-clip-and-dino-features)
-    - [Language-Guided Pose Optimization](#language-guided-pose-optimization)
-- [Troubleshooting](#troubleshooting)
-- [Citation](#citation)
+- **Dexterous grasp representation.** A grasp is defined by a 6-DOF palm pose `T ∈ SE(3)` *and* a hand joint
+  configuration. Instead of a single cloud of query points around the palm (as in F3RM), Dex-F3RM places a set of
+  canonical frames on *every link of every finger* and samples query points around each. Forward kinematics moves
+  these query points as the joints change, so the task embedding captures the chosen grasp primitive and per-finger
+  dexterity — not just the palm pose.
+- **Grasp Primitive Library.** Demonstrations are organized into a hierarchy inspired by human grasp taxonomies,
+  with five primitives: **cylindrical**, **hook**, **pinch**, **tripod**, and **lumbrical**. An LLM
+  ([Llama 3](https://ai.meta.com/blog/meta-llama-3/)) groups demos and writes natural-language descriptions for each
+  category, enabling hierarchical, language-driven demo retrieval.
+- **Two-stage few-shot optimization.** The palm pose is optimized first, then the joint configuration in a separate
+  stage, using a language-guidance-weighted cosine-similarity loss against the demonstration task embedding.
+- **Real2Sim benchmark.** A real-to-sim evaluation pipeline ([SAM2](https://ai.meta.com/sam2/) for segmentation,
+  [FoundationPose](https://github.com/NVlabs/FoundationPose) for 6-DOF pose) loads the predicted object-grasp pairs
+  into [Isaac Sim](https://developer.nvidia.com/isaac-sim) (via the
+  [MultiGripperGrasp](https://irvlutd.github.io/MultiGripperGrasp) pipeline) for large-scale, physically realistic
+  grasp evaluation.
 
-## Code
+### Results (from the thesis)
 
-We provide the official implementation of F3RM for:
+**Simulation (Isaac Sim, fall-time success rate, 120 grasps):** Dex-F3RM surpasses F3RM by **+11.2%** and SparseDFF
+by **+5.6%** for grasps held longer than 3 s.
 
-1. Training Feature Fields
-2. 6-DOF Pose Optimization for Open-Text Language-Guided Manipulation
+| Method                       | > 3s     | > 2s | > 1s | > 0s (contact) |
+|------------------------------|----------|------|------|----------------|
+| Grasp Sampler                | 2.5      | 2.5  | 2.5  | 7.5            |
+| SparseDFF                    | 25.0     | 25.0 | 25.0 | 53.3           |
+| F3RM                         | 19.4     | 19.5 | 20.0 | 90.6           |
+| **Dex-F3RM 2-Stage (ours)**  | **30.6** | 30.8 | 31.8 | **94.3**       |
 
-F3RM is built on top of [Nerfstudio](https://github.com/nerfstudio-project/nerfstudio) following their
-[guide for adding new methods](https://docs.nerf.studio/developer_guides/new_methods.html). For a summary
-of the codebase structure, see [assets/code_structure.md](assets/code_structure.md).
+**Real-world (50 grasps, 5 YCB objects):**
 
-### Installation
+| Method            | Success Rate | Run Time |
+|-------------------|--------------|----------|
+| SparseDFF         | 54.0%        | 16 s     |
+| F3RM              | 60.0%        | 5 min    |
+| **Dex-F3RM 2-Stage** | **72.0%** | 5 min    |
+
+**Ablations:** primitive joint initialization (30.6%) beats random (19.5%) and zero (13.8%); two-stage joint
+optimization (30.6%) beats one-stage (27.9%) and none (23.9%); hierarchical demo retrieval (0.75 accuracy) beats
+F3RM-style flat matching (0.625), reaching 1.00 when the grasp type is named in the query.
+
+-----
+
+## System Overview
+
+Dex-F3RM spans three repositories:
+
+| Repository | Role |
+|------------|------|
+| **`dex-f3rm`** (this repo) | Feature-field training, the dexterous grasp representation, the grasp primitive library, and the two-stage language-guided grasp optimizer (`f3rm-optimize`). |
+| [`dex-f3rm-inference`](https://github.com/david-s-martinez/dex-f3rm-inference) | The real-robot side: hand-eye calibration, robot scanning / RGB-D capture, ROS2 + MoveIt motion planning, and grasp execution on the **Diana 7** arm with the **DLR/HIT Hand II**. |
+| [`isaac_sim_grasping`](https://github.com/IRVLUTD/isaac_sim_grasping) | The MultiGripperGrasp toolkit, repurposed as the **Real2Sim benchmark** in Isaac Sim. Cloned locally at `isaac_sim_grasping/`. |
+
+YCB object meshes/USDs used for the benchmark come from
+[`gazebo-objects`](https://github.com/david-s-martinez/gazebo-objects) (expected at
+`isaac_sim_grasping/gazebo-objects/objects_gazebo/ycb/`).
+
+**Hardware (real-world setup):** Diana 7 (7-DOF arm), DLR/HIT Hand II (15-DOF, 20 actuated joints in code),
+wrist-mounted RealSense D435 (eye-in-hand), NVIDIA RTX Ada 6000, Ubuntu 22.04, ROS2 + MoveIt + Octomap, impedance
+control on the hand.
+
+### Inference pipeline
+
+```
+                                  scan scene (50 RGB-D views, eye-in-hand)
+                                              │
+"Yellow Mustard"  ──► CLIP ──► Demo Retrieval ─┤   Train F3RM-DFF feature field (ns-train f3rm)
+                       │      (Grasp Primitive  │              │
+                       │         Library)       └──────────────┤
+                       ▼                                        ▼
+              Grasp Primitive Selection ──► Initial Proposals (marching-cubes + language masking)
+                                                        │
+                                          Stage 1: 6-DOF pose optimization
+                                          Stage 2: joint configuration optimization
+                                                        │
+                            ┌───────────────────────────┴───────────────────────────┐
+                            ▼                                                         ▼
+                Real world: MoveIt motion plan + execute               Real2Sim: SAM2 + FoundationPose
+                (dex-f3rm-inference)                                    ► Isaac Sim eval (isaac_sim_grasping)
+```
+
+A summary of the codebase layout is in [assets/code_structure.md](assets/code_structure.md). The new
+dexterous-grasping logic lives in [`f3rm_robot/`](f3rm_robot): `task.py` (Task + Grasp Primitive Library),
+`args.py` (optimizer config), `optimize.py` (proposal + two-stage optimization), `benchmark_data.py` (export
+grasps to the Isaac Sim benchmark format), and `assets/hithand_*` (DLR/HIT Hand II URDF, meshes, and task
+embeddings).
+
+-----
+
+## Installation
 
 **Note:** this repo requires an NVIDIA GPU with CUDA 11.7+ for NeRF and feature field distillation.
-#### 0. Building and Running the Docker Container with Visual Studio Code and Dev Containers (Recommended):
-Below is the recommended approach for running the pipeline using Visual Studio Code with the Dev Containers extension. This approach utilizes the `.devcontainer` directory containing the `devcontainer.json` file and Dockerfile for containerization. Users will build and run the container directly from within VS Code. You will need:
+
+#### 0. (Recommended) Build and run the Docker container with VS Code Dev Containers
+
+The repository ships a [`.devcontainer`](.devcontainer) (`devcontainer.json` + Dockerfile) so you can build and run
+the whole pipeline inside a container. You will need:
+
 - Docker installed on your system
-- [Nvidia container toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) installed on your system
+- The [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
 
-Open Visual Studio Code and install the "Remote - Containers" extension by Microsoft. You can install it from the Extensions view (Ctrl+Shift+X) by searching for "Remote - Containers" and clicking "Install".
+Install the **Dev Containers** extension in VS Code, open this repository, and when prompted click **"Reopen in
+Container"** (or run *"Dev Containers: Reopen in Container"* from the command palette, `Ctrl+Shift+P`). If this works,
+you can skip steps 1–2 and run the remaining commands inside the container.
 
-- Once the repository is open in VS Code, the Dev Containers extension will detect the presence of the `.devcontainer` directory containing the `devcontainer.json` file and Dockerfile. It will suggest building and opening the project in a container.
-
-- If the suggestion prompt appears:
-  - Click "Reopen in Container" to build and open the project in a container.
-- If the suggestion prompt does not appear:
-  - Ensure that the Dev Containers extension is properly installed and activated.
-  - Manually build and open the container using the VS Code command palette (Ctrl+Shift+P):
-    - Search for and select "Remote-Containers: Reopen in Container".
-- If this step works you can skip steps 1 and 2. Run the rest of commands inside the container.
-#### 1. Setup conda environment
+#### 1. Set up the conda environment
 
 ```bash
-# We recommend that you use conda to manage your environment
 conda create -n f3rm python=3.8
 conda activate f3rm
 ```
@@ -73,26 +134,21 @@ conda activate f3rm
 #### 2. Install Nerfstudio dependencies
 
 ```bash
-# Install torch per instructions here: https://pytorch.org/get-started/locally/
-# Choose the CUDA version that your GPU supports. We will use CUDA 11.8
+# Install torch per https://pytorch.org/get-started/locally/ (CUDA 11.8 used here)
 pip install torch==2.0.1+cu118 torchvision==0.15.2+cu118 --extra-index-url https://download.pytorch.org/whl/cu118
 
-# Install CUDA toolkit, you can skip this if you already have CUDA 11.8 installed
-# You can check your existing CUDA installation with `nvcc --version`
+# CUDA toolkit (skip if you already have CUDA 11.8 — check with `nvcc --version`)
 conda install -c "nvidia/label/cuda-11.8.0" cuda-toolkit
 export CUDA_HOME=$CONDA_PREFIX
 
-# Install tiny-cuda-nn, this will take a few minutes
+# Install tiny-cuda-nn (takes a few minutes). See INSTALL.md if building from source.
 pip install ninja git+https://github.com/NVlabs/tiny-cuda-nn/#subdirectory=bindings/torch
 ```
 
-#### 3. Clone and install F3RM
+#### 3. Install Dex-F3RM
 
 ```bash
-git clone https://github.com/f3rm/f3rm.git
-cd f3rm
-
-# Install F3RM and its dependencies if it fails try sudo chmod -R 777 ./
+# Install the package and its dependencies (if it fails, try: sudo chmod -R 777 ./)
 pip install -e .
 
 # For the correct Viser version
@@ -101,208 +157,197 @@ pip install viser==0.1.34
 # Install command-line completions for nerfstudio
 ns-install-cli
 
-# Test your installation, check that 'f3rm' is a valid method
+# Check that 'f3rm' is a valid method
 ns-train --help
 ```
 
-**Note:** if you have a previous installation of Nerfstudio, make sure it does not conflict with the new installation
-in the `f3rm` conda environment. Run `which -a ns-train` and check that the first entry points to
-`$CONDA_PREFIX/bin/ns-train`. If it doesn't, then you may need to deactivate all conda environments and only activate
-the `f3rm` environment.
+Tested on Nerfstudio 0.3.3 / 0.3.4. If you have a previous Nerfstudio install, run `which -a ns-train` and confirm
+the first entry points to `$CONDA_PREFIX/bin/ns-train`.
 
-Our code is tested to work on Nerfstudio versions 0.3.3 and 0.3.4.
-
-#### 4. (Optional) Install dependencies for robot manipulation code
-
-Make sure your conda environment is activated before running the following commands.
+#### 4. Install dependencies for the robot / grasp-optimization code
 
 ```bash
-# Install robot dependencies
+# Robot dependencies (open3d, params-proto, PyMCubes, viser, ...)
 pip install -e ".[robot]"
 
-# Install PyTorch3D, we recommend you build from source which may take a few minutes
-# Alternatively, check: https://github.com/facebookresearch/pytorch3d/blob/main/INSTALL.md
-# If it freezes during install try: export MAX_JOBS=4 && pip install --no-cache-dir "git+https://github.com/facebookresearch/pytorch3d.git@stable" --user
+# PyTorch3D (build from source). If it freezes:
+#   export MAX_JOBS=4 && pip install --no-cache-dir "git+https://github.com/facebookresearch/pytorch3d.git@stable" --user
 pip install "git+https://github.com/facebookresearch/pytorch3d.git@stable"
 
-# Test your installation. If you see a help message, everything should be working
+# Sanity check — you should see a help message
 f3rm-optimize --help
 ```
 
+The Real2Sim benchmark additionally requires **Isaac Sim 2023.1.0** (see
+[`isaac_sim_grasping`](https://github.com/IRVLUTD/isaac_sim_grasping)), and **SAM2** / **FoundationPose** for the
+real-to-sim object segmentation and pose estimation steps.
+
+-----
+
 ## Usage
 
-### Downloading Example Datasets
+### 1. Train a feature field (F3RM-DFF)
 
-We provide example datasets of tabletop and room-scale environments which you can download using
-the `f3rm-download-data` command. By default, the script will download all the datasets (requires ~350MB disk space)
-into the `datasets/f3rm` directory relative to your current directory.
-
-Run `f3rm-download-data -h` to see how to download specific datasets or set your own save directory. We provide a short
-description and preview of each dataset in [assets/datasets.md](assets/datasets.md).
-
-### Training a Feature Field
-
-We provide the functionality to train a NeRF and distill features in parallel. The default features we distill are CLIP
-features. You can distill DINO features instead by adding `--pipeline.datamanager.feature-type DINO`.
+Scan a scene with a calibrated RGB-D camera, then train a NeRF that also distills dense CLIP features
+(`ViT-L/14@336px`). On an RTX Ada 6000 this takes ~3 minutes for 5000 iterations.
 
 ```bash
-ns-train f3rm --data <data_folder>
+# COLMAP-processed eye-in-hand scene
+ns-train f3rm --max-num-iterations 5000 --output-dir f3rm_outputs --experiment-name scene_001 --timestamp '' \
+  nerfstudio-data --data ./datasets/eyeinhand_nerf1/img_scene_001 --orientation-method none --auto-scale-poses True
 ```
+
+To distill DINO features instead of CLIP, add `--pipeline.datamanager.feature-type DINO`. See `ns-train f3rm -h`
+for all options, and the upstream [Nerfstudio docs](https://docs.nerf.studio/quickstart/custom_dataset.html) for
+preparing your own datasets. You can inspect a trained field (PCA / similarity heatmaps) with
+`ns-viewer --load-config f3rm_outputs/scene_001/f3rm/config.yml`.
+
+### 2. Collect demonstrations and build task embeddings
+
+Demonstrations are collected by tele-operating the hand (e.g. with a space mouse) to a grasp, recording the palm
+pose and joint configuration, and labeling the grasp in natural language. Each demo's per-link query points are
+transformed by forward kinematics, sampled against the feature field, and averaged into a **task embedding**.
+
+The thesis uses **14 tasks** (object parts), **2 demos each**, across **10 objects**, covering the five grasp
+primitives. Task embeddings ship pre-computed in
+[`f3rm_robot/assets/hithand_tasks_og_fk/`](f3rm_robot/assets/hithand_tasks_og_fk) and are loaded by
+`f3rm_robot/task.py::get_tasks`. The Grasp Primitive Library hierarchy is defined in
+`task.py::grasp_primitives_dict`.
+
+To regenerate task embeddings from demo scenes, see
+[`f3rm_robot/assets/aquire_features.sh`](f3rm_robot/assets/aquire_features.sh), which calls:
 
 ```bash
-ns-train f3rm --data datasets/panda/scene_001 --max-num-iterations 5000 --output-dir f3rm_outputs --timestamp '' --pipeline.model.eval-num-rays-per-chunk 8192
+python3 f3rm_robot/examples/generate_task.py \
+  --scene f3rm_outputs/<demo_scene>/f3rm/config.yml \
+  --demo_fname scene_demo_<name>.json --save --disable_visualize
 ```
 
-You can try F3RM with the example datasets which you can download following the
-[instructions here](#downloading-example-datasets) (try out `f3rm/panda/scene_001`). Alternatively, you can prepare your
-own datasets following the instructions in the
-[Nerfstudio documentation](https://docs.nerf.studio/quickstart/custom_dataset.html).
-
-Note that while we focused on tabletop environments in the paper, F3RM can be scaled up to much larger environments. Try
-training feature fields on the example [rooms datasets](assets/datasets.md#rooms).
-
-You do not need to run the training to completion. We save a checkpoint every 2000 steps by default. To see all the
-options available for training, run `ns-train f3rm -h`.
-
-#### Resuming Training from a Checkpoint
-
-Use the `--load-dir` flag to resume training from a checkpoint. Nerfstudio writes the checkpoint files to the `outputs/`
-directory relative to your current directory.
+### 3. Language-guided grasp optimization
 
 ```bash
-ns-train f3rm --data <data_folder> --load-dir {outputs/.../nerfstudio_models}
+f3rm-optimize --scene f3rm_outputs/scene_001/f3rm/config.yml
 ```
 
-Checkout the [Nerfstudio documentation](https://docs.nerf.studio/quickstart/first_nerf.html) for more details
-on functionality.
+You will be prompted for an open-text query (e.g. *"hammer handle"*, *"red mug"*, *"yellow mustard bottle"*). The
+optimizer then:
 
-### Using our Custom Viewer
+1. **Retrieves** the closest grasp primitive category and the best-matching demonstration(s) from the Grasp
+   Primitive Library (hierarchical CLIP matching).
+2. **Proposes** initial grasps by sampling a voxel grid (marching cubes), pruning free space by density, then
+   keeping the top `--max-voxels` voxels by language similarity, and sampling `--num-rots-per-voxel` rotations.
+3. **Optimizes** the palm pose (stage 1) and the joint configuration (stage 2) with Adam against the
+   language-guidance-weighted cosine-similarity loss, pruning high-loss and colliding grasps.
 
-Our custom web viewer is coming soon! Keep an eye on out for updates.
+Key flags (see `f3rm_robot/args.py` for all defaults):
 
-### Using the Nerfstudio Viewer
+| Flag | Default | Meaning |
+|------|---------|---------|
+| `--is-split-joint-optim` | `True` | Two-stage (pose then joints) optimization. |
+| `--is-use-grasp-prompt` | `True` | Select the grasp primitive from the prompt (hierarchical retrieval). |
+| `--num-steps` | `200` | Adam optimization steps. |
+| `--lr-pose` / `--lr-joints` | `2e-3` / `2e-2` | Learning rates for the two stages. |
+| `--softmax-temperature` | `0.001` | Temperature for language masking of voxels. |
+| `--max-voxels` | `400` | Voxels kept after language similarity ranking. |
+| `--num-rots-per-voxel` | `15` | Rotations sampled per voxel for initial proposals. |
+| `--tasks-folder` | `hithand_tasks_og_fk` | Task-embedding set to load. |
+| `--min-bounds` / `--max-bounds` | — | Workspace bounds in the world frame (metric). |
+| `--visualize` | `True` | Viser visualizer at `http://localhost:8012`. |
 
-Once you have started training the feature field with `ns-train`, Nerfstudio will print a URL to the viewer in the
-terminal (the URL will start with https://viewer.nerf.studio). You can open this URL to open the Nerfstudio viewer in
-your browser to visualize training progress and the feature field. Alternatively, to visualize a trained model you can
-run:
+The optimizer writes a ranked list of grasps to `grasps_to_world.pt` (palm poses) and `joints.pt` (joint configs)
+under the feature field output directory. A detailed tutorial and FAQ for the optimizer is in
+[`f3rm_robot/README.md`](f3rm_robot/README.md).
+
+> **Note on collision checking:** `f3rm_robot/collision.py` ships with the upstream Panda gripper mesh. For the
+> DLR/HIT Hand II, collision geometry is provided under `f3rm_robot/assets/hithand_palm/`.
+
+### 4. Execute on the real robot
+
+Loading the ranked grasps, running IK / MoveIt motion planning, and executing on the Diana 7 + DLR/HIT Hand II is
+handled by the separate [`dex-f3rm-inference`](https://github.com/david-s-martinez/dex-f3rm-inference) repository
+(hand-eye calibration, robot scanning, ROS2 control). This repo does not contain the real-robot drivers.
+
+### 5. Real2Sim benchmark (Isaac Sim)
+
+To evaluate grasps at scale without a robot:
 
 ```bash
-ns-viewer --load-config {outputs/.../config.yml}
+# Train feature fields for the benchmark scenes (img_ycb_scene_1..5)
+./get_benchmark_data.sh
+
+# Run the two-stage optimizer over every benchmark scene; prompts for a model name
+python run_benchmark.py
 ```
-```bash
-ns-viewer --load-config f3rm_outputs/scene_001/f3rm/config.yml
-```
 
+`run_benchmark.py` runs `f3rm-optimize` over `img_ycb_scene_1..5` and snapshots the `args.py` used for the run.
+`f3rm_robot/benchmark_data.py` then converts the optimized grasps into the MultiGripperGrasp JSON format
+(`hithand-<object>-<model>-<prompt>.json`), placing each YCB object at the pose recovered by **SAM2 +
+FoundationPose** and pairing it with the predicted hand pose and joint configuration. These files are loaded into
+**Isaac Sim** via [`isaac_sim_grasping`](https://github.com/IRVLUTD/isaac_sim_grasping), where many hands are
+simulated in parallel and grasps are scored by **fall time** (gravity is enabled after ≥3 contact points;
+> 3 s held = most successful).
 
-Note that if you are using a remote server, you will need to forward the port to your local machine
-([instructions](https://docs.nerf.studio/quickstart/viewer_quickstart.html#training-on-a-remote-machine)).
-The default port used by Nerfstudio is 7007, but check the viewer URL to make sure. For a general guide on how to use
-the Nerfstudio viewer, check out
-their [documentation](https://docs.nerf.studio/quickstart/viewer_quickstart.html).
+The prompt-matching ablation data is in [`matching.csv`](matching.csv) (standard / hierarchical / grasp-type-in-prompt).
 
-#### Visualizing the Feature Field PCA
-
-To visualize the PCA of the features, select `feature_pca` in the `Render Options -> Output Render` dropdown box.
-Note that the initial PCA projection matrix is computed based on the features rendered at your current viewpoint.
-
-<img src="https://raw.githubusercontent.com/f3rm/f3rm/main/assets/images/ns_viewer/feature-pca_option.png" width="400" alt="feature_pca in Output Render dropdown">
-
-To recompute the PCA projection based on your current viewpoint, click the "Refresh PCA Projection" button under
-`Trainer/pipeline/model` near the bottom of the controls.
-
-#### Language Interaction with CLIP Feature Fields
-
-If you are distilling CLIP features (the default feature type), then you will see the following additional controls
-under `Trainer/pipeline/model` near the bottom of the controls panel. You can enter positive and negative text queries
-(separated by `,` commas), which will compute similarity heatmaps. You will need to click out of the text box or press
-the enter key to submit the query.
-
-<img src="https://raw.githubusercontent.com/f3rm/f3rm/main/assets/images/ns_viewer/f3rm_controls.png" width="400" alt="Additional Controls for F3RM in the Nerfstudio Viewer">
-
-To visualize these heatmaps, select `similarity` in the `Render Options -> Output Render` dropdown box. It may take a
-few seconds for this option to show up on the first query, as we load CLIP lazily.
-
-<img src="https://raw.githubusercontent.com/f3rm/f3rm/main/assets/images/ns_viewer/similarity_option.png" width="400" alt="similarity in Output Render dropdown">
-
-We show the similarity heatmap over the `f3rm/panda/scene_001` dataset for the "Baymax" query, with the negatives in the
-controls above (you can download this dataset using the `f3rm-download-data panda` command). Try playing around with
-different language queries and see what results you get!
-
-<img src="https://raw.githubusercontent.com/f3rm/f3rm/main/assets/images/ns_viewer/baymax_heatmap.png" width="500" alt="similarity heatmap for Baymax">
-
-**Note:** if multiple positive queries are specified, we average their CLIP embeddings before computing the pair-wise
-softmax described in Section 3.3 of the [paper](https://arxiv.org/abs/2308.07931). The default temperature of 0.1 works
-well. If no negative queries are specified, then we show the cosine similarity between the positive query and the
-feature field.
-
-### Extracting CLIP and DINO Features
-
-We provide scripts to demonstrate how to extract CLIP and DINO features from their respective vision models. You can
-use these features for your own NeRF pipeline or for other downstream applications.
-
-- Run `python f3rm/scripts/demo_extract_features.py` for a general demo on how to extract CLIP and DINO features.
-  This will create a plot showing the PCA of the CLIP and DINO features. The plot is saved
-  to `demo_extract_features.png`.
-- For details on how to extract CLIP features and compare the extracted features with CLIP text embeddings, run
-  `python f3rm/scripts/demo_clip_features.py`. This script will create a plot showing the similarity heatmaps for a
-  given
-  text query, and will save a plot to `demo_clip_features-{text_query}.png`.
-
-### Language-Guided Pose Optimization
-
-For details on how to run the 6-DOF pose optimization code for language-guided manipulation, please
-check [f3rm_robot/README.md](f3rm_robot/README.md). A detailed tutorial is provided.
-
-[<img src="assets/images/f3rm_robot/optimize.gif" width="500" alt="Language-Guided Pose Optimization Visualizer">](f3rm_robot/README.md)
+-----
 
 ## Troubleshooting
 
-### Language queries are not working in Nerfstudio viewer
-
-The Nerfstudio viewer can sometimes fail to register the input you type into the text boxes if you are use the same
-browser tab for different training runs. This means `feature_pca` and `similarity` may not appear in the Render Options.
-To fix this issue, try closing the tab with the viewer in your browser and opening it again. If this doesn't work,
-please open an issue in this repository.
+### Language queries are not registering in the Nerfstudio viewer
+The viewer can fail to register text input if you reuse the same browser tab across runs, so `feature_pca` /
+`similarity` may not appear in Render Options. Close and reopen the viewer tab.
 
 ### Running out of GPU memory
+This codebase was tested on an RTX3090 (24 GB) and an RTX Ada 6000. Peak usage when training a CLIP feature field
+without the viewer is ~6 GB, and ~12 GB with the viewer.
+- Lower `--pipeline.model.eval-num-rays-per-chunk` (e.g. `8192`) during `ns-train`.
+- Lower `--ray-samples-per-batch` (optimization, default `2**18`) and
+  `--CollisionArgs.ray-samples-per-batch` (collision checking, default `2**22`) for `f3rm-optimize`.
+- Decrease `Max Res` in the Nerfstudio viewer.
 
-This codebase was tested on a RTX3090 with 24GB of GPU memory. We observe a peak memory usage of ~6GB when training a
-CLIP feature field **without** using the viewer. When the viewer is used in conjunction with training, the peak memory
-usage is ~12GB.
+For more, see the upstream [F3RM robot README](f3rm_robot/README.md#troubleshooting).
 
-If you are running out of memory when using the Nerfstudio viewer, try:
-
-1. Decreasing the number of rays per batch when rendering by using the `--pipeline.model.eval-num-rays-per-chunk 8192`
-   flag when running `ns-train`.
-    - The default rays per chunk is 16384, which uses ~12GB of memory (at `Max Res = 512`).
-    - 8192 rays per chunk uses ~10GB memory. Decreasing this number will further reduce memory usage, at the cost of
-      slower rendering.
-2. Decrease the rendering resolution in `Max Res` under Render Options in the Nerfstudio viewer.
-
-If you are running out of memory during any other stages, please open a GitHub issue and we will try to help.
+-----
 
 ## Acknowledgements
 
-We thank the authors of the following projects for making their code open source:
+Dex-F3RM builds directly on the open-source work of:
 
-- [Nerfstudio](https://github.com/nerfstudio-project/nerfstudio)
-- [LERF](https://github.com/kerrj/lerf)
-- [CLIP](https://github.com/openai/CLIP)
-- [DINO](https://github.com/facebookresearch/dino)
-  and [dino-vit-features](https://github.com/ShirAmir/dino-vit-features)
-- [Viser](https://github.com/nerfstudio-project/viser)
+- [F3RM](https://github.com/f3rm/f3rm) — Feature Fields for Robotic Manipulation
+- [Nerfstudio](https://github.com/nerfstudio-project/nerfstudio) and [Viser](https://github.com/nerfstudio-project/viser)
+- [SparseDFF](https://arxiv.org/abs/2310.16838)
+- [CLIP](https://github.com/openai/CLIP) / [MaskCLIP](https://github.com/chongzhou96/MaskCLIP),
+  [DINO](https://github.com/facebookresearch/dino), [LERF](https://github.com/kerrj/lerf)
+- [SAM2](https://github.com/facebookresearch/segment-anything-2) and
+  [FoundationPose](https://github.com/NVlabs/FoundationPose)
+- [MultiGripperGrasp / isaac_sim_grasping](https://github.com/IRVLUTD/isaac_sim_grasping) and
+  [NVIDIA Isaac Sim](https://developer.nvidia.com/isaac-sim)
+- [Llama 3](https://ai.meta.com/blog/meta-llama-3/) for building the grasp primitive hierarchy
+
+With thanks to supervisor M.Sc. Qian Feng and Prof. Alois Knoll at the Chair of Robotics, Artificial Intelligence
+and Real-time Systems, TUM.
 
 ## Citation
 
-If you find our work useful, please consider citing:
+If you find this work useful, please cite the thesis and the original F3RM paper:
 
-```
+```bibtex
+@mastersthesis{martinez2025dexf3rm,
+    title  = {Neural Feature Fields for Language-based Dexterous Robotic Manipulation},
+    author = {Martinez Lema, David Sebastian},
+    school = {Technical University of Munich (TUM)},
+    year   = {2025},
+    type   = {Master's Thesis},
+    doi    = {10.13140/RG.2.2.16378.04809},
+    url    = {https://doi.org/10.13140/RG.2.2.16378.04809},
+    note   = {Examiner: Prof. Alois Knoll; Supervisor: M.Sc. Qian Feng}
+}
+
 @inproceedings{shen2023F3RM,
-    title={Distilled Feature Fields Enable Few-Shot Language-Guided Manipulation},
-    author={Shen, William and Yang, Ge and Yu, Alan and Wong, Jansen and Kaelbling, Leslie Pack and Isola, Phillip},
-    booktitle={7th Annual Conference on Robot Learning},
-    year={2023},
-    url={https://openreview.net/forum?id=Rb0nGIt_kh5}
+    title     = {Distilled Feature Fields Enable Few-Shot Language-Guided Manipulation},
+    author    = {Shen, William and Yang, Ge and Yu, Alan and Wong, Jansen and Kaelbling, Leslie Pack and Isola, Phillip},
+    booktitle = {7th Annual Conference on Robot Learning},
+    year      = {2023},
+    url       = {https://openreview.net/forum?id=Rb0nGIt_kh5}
 }
 ```
